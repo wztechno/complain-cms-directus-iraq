@@ -156,6 +156,7 @@ export default function ComplaintsPage() {
           {filteredComplaints.map((complaint: any) => (
             <ComplaintCard
               key={complaint.id}
+              id={complaint.id}
               title={complaint.title || 'بدون عنوان'}
               type={complaint.Service_type || 'غير محدد'}
               location={complaint.governorate_name || 'غير محدد'}

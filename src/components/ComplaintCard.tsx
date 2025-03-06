@@ -1,4 +1,9 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+
 interface ComplaintCardProps {
+  id: string;
   title: string;
   type: string;
   location: string;
@@ -6,9 +11,14 @@ interface ComplaintCardProps {
   progress: number;
 }
 
-const ComplaintCard = ({ title, type, location, issue, progress }: ComplaintCardProps) => {
+const ComplaintCard = ({ id, title, type, location, issue, progress }: ComplaintCardProps) => {
+  const router = useRouter();
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 relative">
+    <div 
+      className="bg-white rounded-lg shadow-md p-4 relative cursor-pointer"
+      onClick={() => router.push(`/complaints/${id}`)}
+    >
       <div className="flex justify-between items-start mb-4">
         <div className="text-gray-500">{type}</div>
         <button className="text-gray-400 hover:text-gray-600">

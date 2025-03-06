@@ -17,11 +17,6 @@ const ComplaintCard = ({ title, type, location, issue, progress }: ComplaintCard
       </div>
       
       <h3 className="text-xl font-semibold mb-2 text-right">{title}</h3>
-      
-      <div className="flex justify-between items-center mb-4 text-right">
-        <div className="text-gray-600">{location}</div>
-        <div className="text-gray-600">{issue}</div>
-      </div>
 
       <div className="relative pt-1">
         <div className="flex mb-2 items-center justify-between">
@@ -42,6 +37,11 @@ const ComplaintCard = ({ title, type, location, issue, progress }: ComplaintCard
             className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-red-500"
           />
         </div>
+      </div>
+
+      <div className="flex justify-between items-center mt-8 mb-4 text-right">
+        <div className="text-gray-600">{issue}</div>
+        <div className="text-gray-600">{location}</div>
       </div>
     </div>
   );

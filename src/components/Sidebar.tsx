@@ -2,6 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { FaClipboardList, FaHistory, FaListUl, FaStar, FaLayerGroup, FaMapMarkedAlt, FaTags, FaUsers, FaCog } from 'react-icons/fa';
 import { IoMdGitNetwork } from 'react-icons/io';
+import { IoMenu } from 'react-icons/io5';
 
 interface SidebarItem {
   title: string;
@@ -12,7 +13,7 @@ interface SidebarItem {
 const Sidebar = () => {
   const menuItems: SidebarItem[] = [
     { title: 'الشكاوى', href: '/complaints', icon: <FaClipboardList size={20} /> },
-    { title: 'الحالة الزمنية للشكوى', href: '/complaints/timeline', icon: <FaHistory size={20} /> },
+    { title: 'الحالة الزمنية للشكوى', href: '/timeline', icon: <FaHistory size={20} /> },
     { title: 'الفئة الأساسية للشكوى', href: '/complaints/main-category', icon: <FaListUl size={20} /> },
     { title: 'التقييم على كل شكوى', href: '/complaints/ratings', icon: <FaStar size={20} /> },
     { title: 'الفئة الفرعية للشكوى', href: '/complaints/sub-category', icon: <FaLayerGroup size={20} /> },
@@ -24,19 +25,20 @@ const Sidebar = () => {
   ];
 
   return (
-    <div className="w-64 bg-[#3B5998] text-white h-screen fixed right-0 top-0 p-4">
-      <div className="flex justify-center mb-8">
-        <img src="/logo.png" alt="Logo" className="w-16 h-16" />
+    <div className="w-64 bg-[#4664AD] text-white h-screen fixed right-0 top-0">
+      <div className="flex justify-between  items-center border-b-4 border-white pb-4 p-4">
+        <IoMenu className="h-10 w-10" />
+        <img src="/logo.png" alt="Logo" className="w-16 h-14" />
       </div>
-      <nav>
+      <nav className='p-4'>
         {menuItems.map((item, index) => (
           <Link 
             key={index} 
             href={item.href}
-            className="flex flex-row-reverse items-center justify-between py-2 px-4 hover:bg-[#4B69A8] rounded-lg mb-2 transition-colors"
+            className="flex  items-center justify-between py-2 hover:bg-[#4B69A8] rounded-lg mb-2 transition-colors font-cairo"
           >
             <div className="flex items-center gap-3">
-              {item.icon}
+              <div className='h-8 w-8 flex items-center justify-center'>{item.icon}</div>
               <span>{item.title}</span>
             </div>
           </Link>

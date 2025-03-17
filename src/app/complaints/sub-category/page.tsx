@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
+import { exportToCSV } from '@/utils/export';
 
 interface SubCategory {
   id: number;
@@ -67,7 +68,18 @@ export default function SubCategoryPage() {
   };
 
   const handleCardClick = (categoryId: number) => {
-    router.push(`/complaints?subcategory=${categoryId}`);
+    router.push(`/complaints/sub-category/${categoryId}`);
+  };
+
+  const handleExport = () => {
+    const exportData = categories.map(category => ({
+      ID: category.id,
+      Name: category.name,
+      'Main Category': category.mainCategoryDetails?.name || '',
+      Icon: category.icon || ''
+    }));
+
+    exportToCSV(exportData, ['ID', 'Name', 'Main Category', 'Icon'], 'complaint_subcategories');
   };
 
   if (loading) {
@@ -83,7 +95,10 @@ export default function SubCategoryPage() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">الفئة الفرعية للشكوى</h1>
         <div className="flex gap-4">
-          <button className="bg-[#4664AD] text-white px-4 py-2 rounded-lg">
+          <button 
+            onClick={handleExport}
+            className="bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499]"
+          >
             تصدير البيانات
           </button>
         </div>

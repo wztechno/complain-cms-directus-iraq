@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FaStar } from 'react-icons/fa';
+import { GrFilter } from 'react-icons/gr';
+import { fetchWithAuth } from '@/utils/api';
+import { exportToCSV } from '@/utils/export';
 
-interface Rating {
-  id: number;
-  rating_value: string;
-  comment: string | null;
-  user: number;
-  Complaint: number;
+interface UserDetails {
+  full_name?: string;
+  email?: string;
 }
 
 interface ComplaintDetails {
@@ -16,9 +16,13 @@ interface ComplaintDetails {
   Service_type?: string;
 }
 
-interface UserDetails {
-  full_name?: string;
-  email?: string;
+interface Rating {
+  id: string;
+  Complaint: string;
+  user: string;
+  rating_value: string;
+  comment?: string;
+  date_created?: string;
 }
 
 interface RatingWithDetails extends Rating {
@@ -28,11 +32,23 @@ interface RatingWithDetails extends Rating {
 
 export default function RatingsPage() {
   const [ratings, setRatings] = useState<RatingWithDetails[]>([]);
+  const [filteredRatings, setFilteredRatings] = useState<RatingWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    rating: '',
+    startDate: '',
+    endDate: '',
+    serviceType: ''
+  });
 
   useEffect(() => {
     fetchRatings();
   }, []);
+
+  useEffect(() => {
+    handleFilter();
+  }, [filters]);
 
   const fetchRatings = async () => {
     try {
@@ -49,14 +65,14 @@ export default function RatingsPage() {
           
           try {
             // Fetch complaint details
-            const complaintRes = await fetch(`https://complaint.top-wp.com/items/Complaint/${rating.Complaint}`);
+            const complaintRes = await fetchWithAuth(`/items/Complaint/${rating.Complaint}`);
             if (complaintRes.ok) {
               const complaintData = await complaintRes.json();
               details.complaintDetails = complaintData.data;
             }
 
             // Fetch user details
-            const userRes = await fetch(`https://complaint.top-wp.com/items/Users/${rating.user}`);
+            const userRes = await fetchWithAuth(`/items/Users/${rating.user}`);
             if (userRes.ok) {
               const userData = await userRes.json();
               details.userDetails = userData.data;
@@ -70,11 +86,49 @@ export default function RatingsPage() {
       );
 
       setRatings(ratingsWithDetails);
+      setFilteredRatings(ratingsWithDetails);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching ratings:', error);
       setLoading(false);
     }
+  };
+
+  const handleFilter = () => {
+    let filtered = [...ratings];
+
+    if (filters.rating) {
+      filtered = filtered.filter(rating => 
+        rating.rating_value === filters.rating
+      );
+    }
+
+    if (filters.serviceType) {
+      filtered = filtered.filter(rating => 
+        rating.complaintDetails?.Service_type === filters.serviceType
+      );
+    }
+
+    if (filters.startDate) {
+      filtered = filtered.filter(rating => {
+        const ratingDate = new Date(rating.date_created || '');
+        return ratingDate >= new Date(filters.startDate);
+      });
+    }
+
+    if (filters.endDate) {
+      filtered = filtered.filter(rating => {
+        const ratingDate = new Date(rating.date_created || '');
+        return ratingDate <= new Date(filters.endDate);
+      });
+    }
+
+    setFilteredRatings(filtered);
+  };
+
+  const handleExport = () => {
+    const headers = ['id', 'Complaint', 'user', 'rating_value', 'comment', 'date_created'];
+    exportToCSV(filteredRatings, headers, 'ratings_export');
   };
 
   const renderStars = (rating: number) => {
@@ -87,8 +141,8 @@ export default function RatingsPage() {
   };
 
   const getUserName = (userDetails?: UserDetails) => {
-    if (userDetails?.full_name ) {
-      return `${userDetails.full_name || ''}`.trim();
+    if (userDetails?.full_name) {
+      return userDetails.full_name.trim();
     }
     return userDetails?.email || 'مستخدم رقم ';
   };
@@ -105,15 +159,90 @@ export default function RatingsPage() {
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">تقييمات الشكاوى</h1>
-          <button className="bg-[#4664AD] text-white px-4 py-2 rounded-lg">
+        <div className="flex gap-4">
+          <button 
+            onClick={() => setShowFilters(!showFilters)}
+            className="h-10 w-10 hover:bg-[#4664AD] text-[#4664AD] hover:text-[#F9FAFB] p-2 rounded-lg bg-[#F9FAFB] flex items-center justify-center"
+          >
+            <GrFilter />
+          </button>
+          <button 
+            onClick={handleExport}
+            className="bg-[#4664AD] hover:bg-[#F9FAFB] hover:text-[#4664AD] text-[#F9FAFB] px-4 py-2 rounded-lg"
+          >
             تصدير التقييمات
           </button>
+        </div>
       </div>
 
+      {showFilters && (
+        <div className="mb-6 bg-white p-4 rounded-lg shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                التقييم
+              </label>
+              <select
+                value={filters.rating}
+                onChange={(e) => setFilters({ ...filters, rating: e.target.value })}
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              >
+                <option value="">الكل</option>
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <option key={rating} value={rating}>{rating} نجوم</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                نوع الخدمة
+              </label>
+              <select
+                value={filters.serviceType}
+                onChange={(e) => setFilters({ ...filters, serviceType: e.target.value })}
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              >
+                <option value="">الكل</option>
+                {Array.from(new Set(ratings.map(r => r.complaintDetails?.Service_type)))
+                  .filter(Boolean)
+                  .map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))
+                }
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                من تاريخ
+              </label>
+              <input
+                type="date"
+                value={filters.startDate}
+                onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                className="w-full border border-gray-300 rounded-md p-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                الى تاريخ
+              </label>
+              <input
+                type="date"
+                value={filters.endDate}
+                onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                className="w-full border border-gray-300 rounded-md p-2"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {ratings.map((item) => (
+        {filteredRatings.map((item) => (
           <div key={item.id} className="bg-white rounded-lg shadow-md p-6">
-            {/* Header - User Name and Menu */}
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-semibold">
                 {getUserName(item.userDetails)}
@@ -123,7 +252,6 @@ export default function RatingsPage() {
               </button>
             </div>
 
-            {/* Body - Complaint Title and Rating */}
             <div className="mb-6 flex justify-between">
               <div className="text-xl font-semibold mb-3 text-right">
                 {item.complaintDetails?.title || 'شكوى رقم ' + item.Complaint}
@@ -133,7 +261,6 @@ export default function RatingsPage() {
               </div>
             </div>
 
-            {/* Footer - Comment */}
             {item.comment && (
               <div className="border-t pt-4">
                 <p className="text-gray-600 text-right text-sm">

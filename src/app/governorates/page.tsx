@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
+import { exportToCSV } from '@/utils/export';
 
 interface District {
   id: number;
@@ -34,7 +35,16 @@ export default function GovernoratesPage() {
   };
 
   const handleCardClick = (districtId: number) => {
-    router.push(`/complaints?district=${districtId}`);
+    router.push(`/governorates/${districtId}`);
+  };
+
+  const handleExport = () => {
+    const exportData = districts.map(district => ({
+      ID: district.id,
+      Name: district.name
+    }));
+
+    exportToCSV(exportData, ['ID', 'Name'], 'governorates');
   };
 
   if (loading) {
@@ -50,7 +60,10 @@ export default function GovernoratesPage() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">المحافظات</h1>
         <div className="flex gap-4">
-          <button className="bg-[#4664AD] text-white px-4 py-2 rounded-lg">
+          <button 
+            onClick={handleExport}
+            className="bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499]"
+          >
             تصدير البيانات
           </button>
         </div>

@@ -4,11 +4,35 @@ import React, { useState, useEffect } from 'react';
 import { GrFilter } from 'react-icons/gr';
 import { FaFileDownload, FaPlus, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import ComplaintCard from '@/components/ComplaintCard';
+import { fetchWithAuth } from '@/utils/api';
+import { getUserPermissions, hasPermission, applyPermissionFilters, complaintMatchesPermissions } from '@/utils/permissions';
+
+// Add interface for District
+interface District {
+  id: number;
+  name: string;
+}
+
+// Add interface for Complaint with district relationship
+interface Complaint {
+  id: string;
+  title: string;
+  description: string;
+  Service_type: string;
+  district: number | null;
+  districtName?: string; // This will store the district name after joining
+  status_subcategory: string | number;
+  completion_percentage: number;
+  date?: string;
+  statusDate?: string;
+  // Add other fields as needed
+}
 
 export default function ComplaintsPage() {
   const [showFilters, setShowFilters] = useState(false);
-  const [complaints, setComplaints] = useState<any[]>([]);
-  const [filteredComplaints, setFilteredComplaints] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [filteredComplaints, setFilteredComplaints] = useState<Complaint[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
   const [selectedComplaints, setSelectedComplaints] = useState<string[]>([]);
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
@@ -23,103 +47,196 @@ export default function ComplaintsPage() {
     serviceType: ''
   });
 
-  const governorates = [
-    'بغداد',
-    'البصرة',
-    'نينوى',
-    'أربيل',
-    'النجف',
-    'كربلاء',
-    'كركوك',
-    'الأنبار',
-    'ديالى',
-    'واسط',
-    'ميسان',
-    'المثنى',
-    'القادسية',
-    'بابل',
-    'ذي قار',
-    'صلاح الدين',
-    'دهوك',
-    'السليمانية'
-  ];
-
   useEffect(() => {
-    fetchComplaints();
+    fetchDistrictsAndComplaints();
   }, []);
 
   useEffect(() => {
     handleFilter();
   }, [filters]); // Run filter whenever filters change
 
-  const fetchComplaints = async () => {
-    setLoading(true);
+  // New function to fetch districts first, then complaints
+  const fetchDistrictsAndComplaints = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint');
-      if (!res.ok) {
-        throw new Error('Failed to fetch complaints');
+      setLoading(true);
+      
+      // First fetch districts
+      const districtsData = await fetchWithAuth('/items/District');
+      
+      if (!districtsData || !districtsData.data) {
+        console.error("No districts data returned from API");
+        setDistricts([]);
+      } else {
+        // Log the first few districts to see their structure
+        console.log("Districts data sample:", districtsData.data.slice(0, 3));
+        console.log("Districts data types:", 
+          districtsData.data.slice(0, 3).map((d: any) => ({
+            id: d.id, 
+            idType: typeof d.id,
+            name: d.name
+          }))
+        );
+        
+        setDistricts(districtsData.data);
+        console.log(`Fetched ${districtsData.data.length} districts`);
       }
-      const data = await res.json();
       
-      // Sort complaints by date, newest first
-      const sortedComplaints = data.data.sort((a: any, b: any) => {
-        const dateA = new Date(a.statusDate || a.date || 0);
-        const dateB = new Date(b.statusDate || b.date || 0);
-        return dateB.getTime() - dateA.getTime();
-      });
-      
-      setComplaints(sortedComplaints);
-      setFilteredComplaints(sortedComplaints);
-      
-      // Extract unique service types for filter
-      const types = [...new Set(sortedComplaints.map((complaint: any) => complaint.Service_type))]
-        .filter(Boolean) as string[];
-      setServiceTypes(types);
-      setLoading(false);
+      // Then fetch complaints
+      await fetchComplaints();
     } catch (error) {
-      console.error('Error fetching complaints:', error);
+      console.error("Error fetching districts and complaints:", error);
       setLoading(false);
     }
   };
 
+  const fetchComplaints = async () => {
+    try {
+      setLoading(true);
+
+      // Get user permissions and info
+      const userPermissions = await getUserPermissions();
+      const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+      const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+      const isAdmin = userInfo?.role?.id === ADMIN_ROLE_ID;
+
+      let url = '/items/Complaint';
+      
+      // If not admin, apply filters based on user's permissions
+      if (!isAdmin && userPermissions) {
+        const filters = [];
+        
+        // Filter by district if user has district restrictions
+        if (userPermissions.districtIds && userPermissions.districtIds.length > 0) {
+          const districtFilter = `district={${userPermissions.districtIds.join(',')}}`;
+          filters.push(districtFilter);
+        }
+
+        // Filter by status subcategory if user has status restrictions
+        if (userPermissions.statusSubcategoryIds && userPermissions.statusSubcategoryIds.length > 0) {
+          const statusFilter = `status_subcategory={${userPermissions.statusSubcategoryIds.join(',')}}`;
+          filters.push(statusFilter);
+        }
+
+        // Add filters to URL if any exist
+        if (filters.length > 0) {
+          url += `?filter[_or]=[${filters.join(',')}]`;
+        }
+      }
+
+      console.log('Fetching complaints with URL:', url);
+      const response = await fetchWithAuth(url);
+
+      if (!response || !response.data) {
+        throw new Error('Failed to fetch complaints');
+      }
+
+      // Get district names for all complaints
+      const districtsResponse = await fetchWithAuth('/items/District');
+      const districtsMap = new Map(
+        districtsResponse.data.map((district: District) => [district.id, district.name])
+      );
+
+      // Add district names to complaints
+      let processedComplaints = response.data.map((complaint: Complaint) => ({
+        ...complaint,
+        districtName: complaint.district ? districtsMap.get(complaint.district) : 'غير محدد'
+      }));
+
+      // Additional permission filtering if needed
+      if (!isAdmin) {
+        processedComplaints = processedComplaints.filter((complaint: Complaint) => 
+          complaintMatchesPermissions(complaint, userPermissions)
+        );
+      }
+
+      // Sort complaints by date (newest first)
+      processedComplaints = sortComplaintsByDate(processedComplaints);
+
+      setComplaints(processedComplaints);
+      setFilteredComplaints(processedComplaints);
+
+      // Extract unique service types for filter dropdown
+      const uniqueServiceTypes = Array.from(
+        new Set(processedComplaints.map((c: Complaint) => c.Service_type || '').filter(Boolean))
+      ) as string[];
+      setServiceTypes(uniqueServiceTypes);
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching complaints:', error);
+      setLoading(false);
+      setComplaints([]);
+      setFilteredComplaints([]);
+    }
+  };
+
   const handleFilter = () => {
-    let filtered = [...complaints];
+    try {
+      let filtered = [...complaints];
+      console.log(`Filtering from ${complaints.length} complaints`);
 
-    if (filters.governorate) {
-      filtered = filtered.filter(complaint => 
-        complaint.governorate_name === filters.governorate
-      );
+      if (filters.governorate) {
+        filtered = filtered.filter(complaint => {
+          if (!complaint.districtName) return false;
+          return complaint.districtName === filters.governorate;
+        });
+        console.log(`After governorate filter (${filters.governorate}): ${filtered.length} complaints`);
+      }
+
+      if (filters.serviceType) {
+        filtered = filtered.filter(complaint => 
+          complaint.Service_type === filters.serviceType
+        );
+        console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
+      }
+
+      if (filters.startDate) {
+        filtered = filtered.filter(complaint => {
+          if (!complaint.statusDate && !complaint.date) return false;
+          
+          try {
+            const dateStr = complaint.statusDate || complaint.date;
+            if (!dateStr) return false;
+            
+            const complaintDate = new Date(dateStr);
+            return !isNaN(complaintDate.getTime()) && complaintDate >= new Date(filters.startDate);
+          } catch (error) {
+            console.error('Error comparing dates:', error);
+            return false;
+          }
+        });
+        console.log(`After start date filter (${filters.startDate}): ${filtered.length} complaints`);
+      }
+
+      if (filters.endDate) {
+        filtered = filtered.filter(complaint => {
+          if (!complaint.statusDate && !complaint.date) return false;
+          
+          try {
+            const dateStr = complaint.statusDate || complaint.date;
+            if (!dateStr) return false;
+            
+            const complaintDate = new Date(dateStr);
+            return !isNaN(complaintDate.getTime()) && complaintDate <= new Date(filters.endDate);
+          } catch (error) {
+            console.error('Error comparing dates:', error);
+            return false;
+          }
+        });
+        console.log(`After end date filter (${filters.endDate}): ${filtered.length} complaints`);
+      }
+
+      // Use the sortComplaintsByDate helper function to maintain newest to oldest order
+      const sortedFiltered = sortComplaintsByDate(filtered);
+      console.log('Sorted filtered complaints from newest to oldest');
+
+      setFilteredComplaints(sortedFiltered);
+      setCurrentPage(1); // Reset to first page when filtering
+    } catch (error) {
+      console.error('Error during filtering:', error);
+      // If filtering fails, at least show something
+      setFilteredComplaints(complaints);
     }
-
-    if (filters.serviceType) {
-      filtered = filtered.filter(complaint => 
-        complaint.Service_type === filters.serviceType
-      );
-    }
-
-    if (filters.startDate) {
-      filtered = filtered.filter(complaint => {
-        const complaintDate = new Date(complaint.statusDate || complaint.date);
-        return complaintDate >= new Date(filters.startDate);
-      });
-    }
-
-    if (filters.endDate) {
-      filtered = filtered.filter(complaint => {
-        const complaintDate = new Date(complaint.statusDate || complaint.date);
-        return complaintDate <= new Date(filters.endDate);
-      });
-    }
-
-    // Maintain newest to oldest order after filtering
-    filtered.sort((a: any, b: any) => {
-      const dateA = new Date(a.statusDate || a.date || 0);
-      const dateB = new Date(b.statusDate || b.date || 0);
-      return dateB.getTime() - dateA.getTime();
-    });
-
-    setFilteredComplaints(filtered);
-    setCurrentPage(1); // Reset to first page when filtering
   };
 
   const toggleComplaintSelection = (id: string) => {
@@ -152,7 +269,7 @@ export default function ComplaintsPage() {
         `"${c.title || ''}"`,
         `"${c.description || ''}"`,
         `"${c.Service_type || ''}"`,
-        `"${c.governorate_name || ''}"`,
+        `"${c.districtName || ''}"`,
         c.completion_percentage || 0,
         c.date || ''
       ].join(','))
@@ -178,6 +295,85 @@ export default function ComplaintsPage() {
   const indexOfFirstComplaint = indexOfLastComplaint - complaintsPerPage;
   const currentComplaints = filteredComplaints.slice(indexOfFirstComplaint, indexOfLastComplaint);
   const totalPages = Math.ceil(filteredComplaints.length / complaintsPerPage);
+
+  // Add a new function to fetch district details for a specific complaint if needed
+  const fetchDistrictForComplaint = async (complaint: Complaint) => {
+    if (!complaint.district || complaint.districtName) {
+      return complaint; // No district ID or already has district name
+    }
+    
+    try {
+      const districtResponse = await fetchWithAuth(`/items/District/${complaint.district}`);
+      if (districtResponse && districtResponse.data && districtResponse.data.name) {
+        console.log(`Fetched district name "${districtResponse.data.name}" for complaint ${complaint.id}`);
+        return {
+          ...complaint,
+          districtName: districtResponse.data.name
+        };
+      }
+    } catch (error) {
+      console.error(`Error fetching district for complaint ${complaint.id}:`, error);
+    }
+    
+    return complaint;
+  };
+  
+  // Update function to handle any missing district names
+  const updateMissingDistrictNames = async (complaintsArray: Complaint[]) => {
+    const complaintsWithoutDistricts = complaintsArray.filter(c => !c.districtName && c.district);
+    
+    if (complaintsWithoutDistricts.length === 0) {
+      return complaintsArray; // No complaints need updating
+    }
+    
+    console.log(`Found ${complaintsWithoutDistricts.length} complaints without district names. Fetching...`);
+    
+    // Process in smaller batches to avoid overloading the API
+    const batchSize = 5;
+    let updatedComplaints = [...complaintsArray];
+    
+    for (let i = 0; i < complaintsWithoutDistricts.length; i += batchSize) {
+      const batch = complaintsWithoutDistricts.slice(i, i + batchSize);
+      console.log(`Processing batch ${i/batchSize + 1} of ${Math.ceil(complaintsWithoutDistricts.length/batchSize)}`);
+      
+      const updatedBatch = await Promise.all(batch.map(complaint => fetchDistrictForComplaint(complaint)));
+      
+      // Update the complaints in the main array
+      updatedBatch.forEach(updatedComplaint => {
+        const index = updatedComplaints.findIndex(c => c.id === updatedComplaint.id);
+        if (index !== -1) {
+          updatedComplaints[index] = updatedComplaint;
+        }
+      });
+    }
+    
+    // Sort complaints from newest to oldest before returning
+    const sortedComplaints = sortComplaintsByDate(updatedComplaints);
+    console.log("Ensuring complaints are sorted by date after district updates");
+    return sortedComplaints;
+  };
+
+  // Helper function to sort complaints from newest to oldest
+  const sortComplaintsByDate = (complaints: Complaint[]): Complaint[] => {
+    return [...complaints].sort((a, b) => {
+      // Helper function to safely get date values
+      const getDateValue = (complaint: Complaint): number => {
+        // Try to use statusDate first, then date, then fallback to 0
+        if (complaint.statusDate) {
+          const date = new Date(complaint.statusDate);
+          return isNaN(date.getTime()) ? 0 : date.getTime();
+        }
+        if (complaint.date) {
+          const date = new Date(complaint.date);
+          return isNaN(date.getTime()) ? 0 : date.getTime();
+        }
+        return 0;
+      };
+
+      // Sort from newest (highest timestamp) to oldest (lowest timestamp)
+      return getDateValue(b) - getDateValue(a);
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
@@ -241,8 +437,8 @@ export default function ComplaintsPage() {
                   className="w-full border border-gray-300 rounded-md p-2 text-right"
                 >
                   <option value="">الكل</option>
-                  {governorates.map((gov) => (
-                    <option key={gov} value={gov}>{gov}</option>
+                  {districts.map((district) => (
+                    <option key={district.id} value={district.name}>{district.name}</option>
                   ))}
                 </select>
               </div>
@@ -309,7 +505,7 @@ export default function ComplaintsPage() {
                   id={complaint.id}
                   title={complaint.title || 'بدون عنوان'}
                   type={complaint.Service_type || 'غير محدد'}
-                  location={complaint.governorate_name || 'غير محدد'}
+                  location={complaint.districtName || 'غير محدد'}
                   issue={complaint.description || 'لا يوجد وصف'}
                   progress={complaint.completion_percentage || 0}
                   isSelected={selectedComplaints.includes(complaint.id)}

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/utils/api';
+import { getUserPermissions, hasPermission } from '@/utils/permissions';
 
 export default function CreateComplaintPage() {
   const router = useRouter();
@@ -9,6 +11,7 @@ export default function CreateComplaintPage() {
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -19,36 +22,51 @@ export default function CreateComplaintPage() {
   });
 
   useEffect(() => {
-    const fetchMetadata = async () => {
+    const checkPermissionsAndFetchData = async () => {
       try {
+        // Check if user has permission to create complaints
+        const userPermissions = await getUserPermissions();
+        
+        if (!hasPermission(userPermissions, 'Complaint', 'create')) {
+          setPermissionError('ليس لديك صلاحية لإنشاء شكاوى جديدة');
+          setLoading(false);
+          return;
+        }
+        
         // Fetch governorates
-        const govRes = await fetch('https://complaint.top-wp.com/items/Complaint');
-        if (govRes.ok) {
-          const govData = await govRes.json();
-          const uniqueGovs = [...new Set(govData.data
-            .map((item: any) => item.governorate_name)
-            .filter(Boolean))] as string[];
-          setGovernorates(uniqueGovs);
+        try {
+          const govResponse = await fetchWithAuth('/items/District');
+          if (govResponse && govResponse.data) {
+            const uniqueGovs = govResponse.data.map((item: any) => item.name).filter(Boolean);
+            setGovernorates(uniqueGovs);
+          }
+        } catch (error) {
+          console.error('Error fetching governorates:', error);
+          // Continue even if this fails
         }
         
         // Fetch service types
-        const serviceRes = await fetch('https://complaint.top-wp.com/items/Complaint');
-        if (serviceRes.ok) {
-          const serviceData = await serviceRes.json();
-          const uniqueServices = [...new Set(serviceData.data
-            .map((item: any) => item.Service_type)
-            .filter(Boolean))] as string[];
-          setServiceTypes(uniqueServices);
+        try {
+          const serviceResponse = await fetchWithAuth('/items/Complaint');
+          if (serviceResponse && serviceResponse.data) {
+            const uniqueServices = [...new Set(serviceResponse.data
+              .map((item: any) => item.Service_type)
+              .filter(Boolean))] as string[];
+            setServiceTypes(uniqueServices);
+          }
+        } catch (error) {
+          console.error('Error fetching service types:', error);
+          // Continue even if this fails
         }
         
         setLoading(false);
       } catch (error) {
-        console.error('Error fetching metadata:', error);
+        console.error('Error initializing create complaint page:', error);
         setLoading(false);
       }
     };
     
-    fetchMetadata();
+    checkPermissionsAndFetchData();
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -64,7 +82,17 @@ export default function CreateComplaintPage() {
     setSubmitting(true);
     
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint', {
+      // Check if user still has permission (in case permissions changed while on page)
+      const userPermissions = await getUserPermissions();
+      
+      if (!hasPermission(userPermissions, 'Complaint', 'create')) {
+        setPermissionError('ليس لديك صلاحية لإنشاء شكاوى جديدة');
+        setSubmitting(false);
+        return;
+      }
+      
+      // Use fetchWithAuth instead of fetch
+      const response = await fetchWithAuth('/items/Complaint', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +100,7 @@ export default function CreateComplaintPage() {
         body: JSON.stringify(formData)
       });
       
-      if (!res.ok) {
+      if (!response.data) {
         throw new Error('Failed to create complaint');
       }
       
@@ -89,6 +117,24 @@ export default function CreateComplaintPage() {
     return (
       <div className="min-h-screen bg-gray-100 p-8 mr-64 flex justify-center items-center">
         <div className="text-xl text-gray-600">جاري تحميل البيانات...</div>
+      </div>
+    );
+  }
+
+  if (permissionError) {
+    return (
+      <div className="min-h-screen bg-gray-100 p-8 mr-64">
+        <div className="bg-white rounded-lg p-6 shadow-md">
+          <h2 className="text-xl font-bold text-red-500 text-center mb-4">{permissionError}</h2>
+          <div className="flex justify-center">
+            <button
+              onClick={() => router.push('/complaints')}
+              className="bg-[#4664AD] text-white px-4 py-2 rounded-lg"
+            >
+              العودة إلى الشكاوى
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

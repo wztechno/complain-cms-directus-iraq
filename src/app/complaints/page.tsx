@@ -7,6 +7,9 @@ import ComplaintCard from '@/components/ComplaintCard';
 import { fetchWithAuth } from '@/utils/api';
 import { getUserPermissions, hasPermission, applyPermissionFilters, complaintMatchesPermissions } from '@/utils/permissions';
 
+// Add BASE_URL constant
+const BASE_URL = 'https://complaint.top-wp.com';
+
 // Add interface for District
 interface District {
   id: number;
@@ -39,9 +42,11 @@ export default function ComplaintsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const complaintsPerPage = 10;
-  
+  const [complaintNames, setComplaintNames] = useState<string[]>([]); // Add this line
+
   const [filters, setFilters] = useState({
     governorate: '',
+    title: '',
     startDate: '',
     endDate: '',
     serviceType: ''
@@ -127,39 +132,192 @@ export default function ComplaintsPage() {
       const response = await fetchWithAuth(url);
 
       if (!response || !response.data) {
-        throw new Error('Failed to fetch complaints');
+        console.error('No response or data from complaints API:', response);
+        throw new Error('Failed to fetch complaints - No data returned');
+      }
+
+      console.log(`Received ${response.data.length} complaints from API`);
+      
+      // Check if the API returned an array of IDs or full complaint objects
+      let complaintsData = response.data;
+      let complaintsWithPermissions = 0;
+      
+      if (complaintsData.length > 0) {
+        const firstItem = complaintsData[0];
+        console.log('First complaint data type:', typeof firstItem);
+        
+        if (typeof firstItem === 'number' || typeof firstItem === 'string') {
+          console.warn('API returned IDs instead of full complaint objects. Fetching individual complaints...');
+          
+          // Handle case where our fetchWithAuth method didn't convert IDs to full objects
+          const complaintIds = complaintsData;
+          const fullComplaints = [];
+          
+          // Process in smaller batches to avoid overwhelming the API
+          const batchSize = 5;
+          for (let i = 0; i < complaintIds.length; i += batchSize) {
+            const batch = complaintIds.slice(i, i + batchSize);
+            console.log(`Fetching details for complaints batch ${Math.floor(i/batchSize) + 1} (${batch.length} items)`);
+            
+            const batchResults = await Promise.all(
+              batch.map(async (id: string | number) => {
+                try {
+                  // Use the direct URL to fetch each complaint by ID
+                  // NOTE: We're using fetchWithAuthSafe to avoid throwing exceptions on 403 errors
+                  const detailResponse = await fetch(`${BASE_URL}/items/Complaint/${id}`, {
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                    }
+                  });
+                  
+                  if (detailResponse.status === 403) {
+                    console.log(`No permission to access complaint #${id} (403 Forbidden)`);
+                    return null;
+                  }
+                  
+                  if (!detailResponse.ok) {
+                    console.error(`Error fetching complaint #${id}: ${detailResponse.status}`);
+                    return null;
+                  }
+                  
+                  const detailData = await detailResponse.json();
+                  complaintsWithPermissions++;
+                  console.log(`Successfully fetched complaint #${id}`);
+                  return detailData?.data || null;
+                } catch (error) {
+                  console.error(`Error fetching detail for complaint ID ${id}:`, error);
+                  return null;
+                }
+              })
+            );
+            
+            // Add valid complaints to our result array
+            const validResults = batchResults.filter(c => c !== null);
+            console.log(`Got ${validResults.length}/${batch.length} valid complaints in this batch`);
+            fullComplaints.push(...validResults);
+          }
+          
+          console.log(`Successfully fetched ${fullComplaints.length}/${complaintIds.length} full complaint objects (${complaintIds.length - fullComplaints.length} were inaccessible due to permissions)`);
+          complaintsData = fullComplaints;
+        }
       }
 
       // Get district names for all complaints
-      const districtsResponse = await fetchWithAuth('/items/District');
-      const districtsMap = new Map(
-        districtsResponse.data.map((district: District) => [district.id, district.name])
-      );
+      let districtsMap = new Map();
+      try {
+        const districtsResponse = await fetchWithAuth('/items/District');
+        console.log('Districts response:', districtsResponse);
+        
+        if (districtsResponse?.data && Array.isArray(districtsResponse.data)) {
+          console.log('Districts count:', districtsResponse.data.length);
+          
+          // Check if districts are properly formed objects
+          const validDistricts = districtsResponse.data.filter((district: any) => 
+            district && typeof district === 'object' && district.id !== undefined && district.name !== undefined
+          );
+          
+          console.log(`Found ${validDistricts.length} valid districts out of ${districtsResponse.data.length}`);
+          
+          if (validDistricts.length > 0) {
+            console.log('Sample district data:', validDistricts[0]);
+            
+            districtsMap = new Map(
+              validDistricts.map((district: District) => [district.id, district.name])
+            );
+            console.log(`Created district map with ${districtsMap.size} entries`);
+            
+            if (districtsMap.size > 0) {
+              console.log('Sample district mapping:', 
+                Array.from(districtsMap.entries()).slice(0, 3)
+              );
+            }
+          } else {
+            console.warn('No valid district objects found in the response');
+          }
+        } else {
+          console.warn('Districts response does not contain an array of districts');
+        }
+        // Move this after processedComplaints is defined
+        const uniqueNames = Array.from(
+          new Set(complaintsData.map((c: Complaint) => c.title || '').filter(Boolean))
+        ) as string[];
+        setComplaintNames(uniqueNames);
+        console.log(`Found ${uniqueNames.length} unique complaint names`);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching districts:', error);
+        console.log('Proceeding without district names');
+      }
 
-      // Add district names to complaints
-      let processedComplaints = response.data.map((complaint: Complaint) => ({
-        ...complaint,
-        districtName: complaint.district ? districtsMap.get(complaint.district) : 'غير محدد'
-      }));
+      // Add district names to complaints - with safety checks
+      let processedComplaints = complaintsData
+        .filter((complaint: any) => complaint !== null) // Filter out null entries
+        .map((complaint: Complaint) => {
+          // Ensure complaint is an object
+          if (typeof complaint !== 'object' || complaint === null) {
+            console.warn(`Invalid complaint data: ${complaint}`);
+            return null; // This will be filtered out
+          }
+          
+          // Handle district mapping
+          let districtName = 'غير محدد'; // Default value
+          if (complaint.district) {
+            const mappedName = districtsMap.get(complaint.district);
+            if (mappedName) {
+              districtName = mappedName;
+            } else {
+              console.warn(`No district name found for ID: ${complaint.district}`);
+            }
+          }
+          
+          return {
+            ...complaint,
+            districtName
+          };
+        })
+        .filter((complaint: any) => complaint !== null); // Filter out any nulls from invalid complaints
+
+      console.log(`Processed ${processedComplaints.length} valid complaints`);
+      
+      // Add a sample of processed complaints for debugging
+      if (processedComplaints.length > 0) {
+        console.log('Sample processed complaint:', processedComplaints[0]);
+      } else {
+        console.warn('No valid complaints after processing');
+        
+        // Check if we received IDs but had permission issues
+        if (response.data.length > 0 && complaintsWithPermissions === 0) {
+          console.warn('You have permission to see complaint IDs but not their content');
+        }
+      }
 
       // Additional permission filtering if needed
       if (!isAdmin) {
+        const beforeFilterCount = processedComplaints.length;
         processedComplaints = processedComplaints.filter((complaint: Complaint) => 
           complaintMatchesPermissions(complaint, userPermissions)
         );
+        console.log(`Permission filtering: ${beforeFilterCount} -> ${processedComplaints.length} complaints`);
       }
-
+      
       // Sort complaints by date (newest first)
-      processedComplaints = sortComplaintsByDate(processedComplaints);
+      const sortedComplaints = processedComplaints.length > 0 ? processedComplaints.sort((a: Complaint, b: Complaint) => {
+        const dateA = new Date(a.statusDate || a.date || '');
+        const dateB = new Date(b.statusDate || b.date || '');
+        return dateB.getTime() - dateA.getTime();
+      }) : [];
 
-      setComplaints(processedComplaints);
-      setFilteredComplaints(processedComplaints);
+      console.log(`Final complaint count: ${sortedComplaints.length}`);
+      setComplaints(sortedComplaints);
+      setFilteredComplaints(sortedComplaints);
 
       // Extract unique service types for filter dropdown
       const uniqueServiceTypes = Array.from(
         new Set(processedComplaints.map((c: Complaint) => c.Service_type || '').filter(Boolean))
       ) as string[];
       setServiceTypes(uniqueServiceTypes);
+      console.log(`Found ${uniqueServiceTypes.length} unique service types`);
 
       setLoading(false);
     } catch (error) {
@@ -181,6 +339,14 @@ export default function ComplaintsPage() {
           return complaint.districtName === filters.governorate;
         });
         console.log(`After governorate filter (${filters.governorate}): ${filtered.length} complaints`);
+      }
+
+      // Add name filter
+      if (filters.title) {
+        filtered = filtered.filter(complaint => 
+          complaint.title === filters.title
+        );
+        console.log(`After name filter (${filters.title}): ${filtered.length} complaints`);
       }
 
       if (filters.serviceType) {
@@ -427,6 +593,21 @@ export default function ComplaintsPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                  فئة الشكوى
+                </label>
+                <select
+                  value={filters.title}
+                  onChange={(e) => setFilters({ ...filters, title: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md p-2 text-right"
+                >
+                  <option value="">الكل</option>
+                  {complaintNames.map(name => (
+                    <option key={name} value={name}>{name || 'بدون عنوان'}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                   المحافظة
                 </label>
                 <select
@@ -493,8 +674,11 @@ export default function ComplaintsPage() {
             <div className="text-xl text-gray-500">جاري تحميل البيانات...</div>
           </div>
         ) : filteredComplaints.length === 0 ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="text-xl text-gray-500">لا توجد شكاوى</div>
+          <div className="flex justify-center items-center h-64 flex-col">
+            <div className="text-xl text-gray-500 mb-2">لا توجد شكاوى</div>
+            <div className="text-md text-gray-400 max-w-md text-center">
+              قد يكون هذا بسبب عدم وجود شكاوى مسجلة، أو بسبب عدم وجود صلاحيات للوصول إلى الشكاوى المتاحة.
+            </div>
           </div>
         ) : (
           <>

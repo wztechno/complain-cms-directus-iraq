@@ -1,38 +1,30 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { FaClipboardList, FaHistory, FaListUl, FaStar, FaLayerGroup, FaMapMarkedAlt, FaTags, FaUsers, FaCog, FaSignOutAlt } from 'react-icons/fa';
 import { IoMdGitNetwork } from 'react-icons/io';
 import { IoMenu } from 'react-icons/io5';
-import { getUserPermissions, hasPermission, clearPermissionsCache } from '@/utils/permissions';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface SidebarItem {
   title: string;
   href: string;
   icon: React.ReactNode;
-  collection: string; // Collection name for permission check
+  collection: string;
 }
 
 const Sidebar = () => {
   const pathname = usePathname();
-  const activeColor = "#4664AD"; // Sidebar blue color
   const [visibleItems, setVisibleItems] = useState<SidebarItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const { logout, userInfo } = useAuth();
+  const { logout } = useAuth();
   
-  // Use a ref to track if we've already loaded permissions to prevent infinite loops
-  const permissionsLoadedRef = useRef(false);
-
-  // Store previous user ID to detect user changes
-  const previousUserIdRef = useRef<string | null>(null);
-
   // Define all possible menu items with their corresponding collections
   const allMenuItems: SidebarItem[] = useMemo(() => [
     { title: 'الشكاوى', href: '/complaints', icon: <FaClipboardList size={20} />, collection: 'Complaint' },
-    { title: 'الحالة الزمنية للشكوى', href: '/timeline', icon: <FaHistory size={20} />, collection: 'ComplaintTimeline' },
+    { title: 'الحالة الزمنية للشكوى', href: '/timeline', icon: <FaHistory size={20} />, collection: 'Complaint_timeline' },
     { title: 'الفئة الأساسية للشكوى', href: '/complaints/main-category', icon: <FaListUl size={20} />, collection: 'Complaint_main_category' },
     { title: 'التقييم على كل شكوى', href: '/complaints/ratings', icon: <FaStar size={20} />, collection: 'Complaint_ratings' },
     { title: 'الفئة الفرعية للشكوى', href: '/complaints/sub-category', icon: <FaLayerGroup size={20} />, collection: 'Complaint_sub_category' },
@@ -40,7 +32,6 @@ const Sidebar = () => {
     { title: 'الفئة الأساسية للحالة', href: '/status/main-category', icon: <IoMdGitNetwork size={20} />, collection: 'Status_category' },
     { title: 'الفئة الفرعية للحالة', href: '/status/sub-category', icon: <FaTags size={20} />, collection: 'Status_subcategory' },
     { title: 'المواطنون', href: '/citizens', icon: <FaUsers size={20} />, collection: 'Users' },
-    // Settings is available to everyone who is logged in
     { title: 'الإعدادات', href: '/settings', icon: <FaCog size={20} />, collection: 'settings' },
   ], []);
 
@@ -51,7 +42,7 @@ const Sidebar = () => {
     if (storedUserInfo) {
       try {
         const userInfoData = JSON.parse(storedUserInfo);
-        return userInfoData?.role?.id === ADMIN_ROLE_ID;
+        return userInfoData?.role === ADMIN_ROLE_ID || userInfoData?.admin_access === true;
       } catch (error) {
         console.error("Error checking admin role:", error);
         return false;
@@ -66,7 +57,24 @@ const Sidebar = () => {
       try {
         setLoading(true);
 
-        // If user is admin, show all menu items
+        // Get user info from localStorage
+        const userInfoStr = localStorage.getItem('user_info');
+        if (!userInfoStr) {
+          console.log("No user info in localStorage");
+          setVisibleItems([]);
+          setLoading(false);
+          return;
+        }
+
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+          console.log("No auth token in localStorage");
+          setVisibleItems([]);
+          setLoading(false);
+          return;
+        }
+
+        // If user is admin, show all menu items except settings (we'll add it conditionally)
         if (isAdmin) {
           console.log("Admin user detected - showing all menu items");
           setVisibleItems(allMenuItems);
@@ -74,30 +82,99 @@ const Sidebar = () => {
           return;
         }
 
-        // For regular users, fetch permissions
-        const userPermissions = await getUserPermissions();
-        console.log("User permissions:", userPermissions);
-
-        // Filter menu items based on permissions
-        const filteredItems = allMenuItems.filter(item => {
-          // Settings is always visible
-          if (item.collection === 'settings') {
-            return true;
+        const userInfo = JSON.parse(userInfoStr);
+        const userId = userInfo.id;
+        
+        // Step 1: Fetch user's policy ID
+        const policiesResponse = await fetch(
+          `https://complaint.top-wp.com/items/user_policies?filter[user_id]=${userId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
           }
+        );
 
-          // Check if user has read permission for the collection
-          const hasAccess = hasPermission(userPermissions, item.collection, 'read');
-          console.log(`Checking permission for ${item.collection}: ${hasAccess}`);
-          return hasAccess;
+        if (!policiesResponse.ok) {
+          console.error(`Error fetching policies: ${policiesResponse.status} ${policiesResponse.statusText}`);
+          throw new Error('Failed to fetch user policies');
+        }
+
+        const policiesData = await policiesResponse.json();
+        if (!policiesData?.data?.length) {
+          console.error("No policy data found in response");
+          throw new Error('No policy data found for user');
+        }
+        
+        const policyIdArray = policiesData.data[0]?.policy_id;
+        let policyId;
+        
+        if (Array.isArray(policyIdArray) && policyIdArray.length > 0) {
+          policyId = policyIdArray[0];
+        } else if (typeof policyIdArray === 'string') {
+          policyId = policyIdArray;
+        }
+        
+        if (!policyId) {
+          console.error("Could not extract a valid policy ID");
+          throw new Error('No policy found for user');
+        }
+
+        // Step 2: Fetch permissions for this policy
+        const permissionsResponse = await fetch(
+          `https://complaint.top-wp.com/permissions?filter[policy][_eq]=${policyId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            method: 'GET'
+          }
+        );
+        
+        if (!permissionsResponse.ok) {
+          console.error(`Error fetching permissions: ${permissionsResponse.status} ${permissionsResponse.statusText}`);
+          throw new Error(`Failed to fetch permissions for policy ${policyId}`);
+        }
+        
+        const permissionsData = await permissionsResponse.json();
+        if (!permissionsData?.data) {
+          console.error("No permissions data found in response");
+          throw new Error(`No permissions found for policy ${policyId}`);
+        }
+        
+        // Create a map of collections with read permissions
+        const readableCollections = new Set<string>();
+        permissionsData.data.forEach((permission: any) => {
+          if (permission.action === 'read') {
+            const collection = permission.collection;
+            if (collection) {
+              readableCollections.add(collection.toLowerCase());
+            }
+          }
         });
 
-        console.log("Filtered menu items:", filteredItems);
+        // Filter menu items based on permissions (excluding settings for non-admins)
+        const filteredItems = allMenuItems.filter(item => {
+          // Always exclude settings for non-admins
+          if (item.collection === 'settings') return false;
+          
+          const collectionLower = item.collection.toLowerCase();
+          return readableCollections.has(collectionLower);
+        });
+
+        // If no items found, show at least complaints if available
+        if (filteredItems.length === 0) {
+          const complaintsItem = allMenuItems.find(item => item.collection === 'Complaint');
+          if (complaintsItem) {
+            filteredItems.push(complaintsItem);
+          }
+        }
+
         setVisibleItems(filteredItems);
       } catch (error) {
-        console.error('Error loading permissions:', error);
-        // Show only settings on error
-        const settingsItem = allMenuItems.find(item => item.collection === 'settings');
-        setVisibleItems(settingsItem ? [settingsItem] : []);
+        console.error('Error in loadPermissions:', error);
+        setVisibleItems([]);
       } finally {
         setLoading(false);
       }
@@ -106,20 +183,10 @@ const Sidebar = () => {
     loadPermissions();
   }, [allMenuItems, isAdmin]);
 
-  // Memoize the isActive function to prevent recreating it on every render
-  const isActive = useMemo(() => (href: string) => {
-    if (href === '/complaints') {
-      return pathname === href || (pathname.startsWith('/complaints/') && !visibleItems.some(item => item.href !== '/complaints' && pathname === item.href));
-    }
-    return pathname === href;
-  }, [pathname, visibleItems]);
+  const isActive = (href: string) => pathname === href;
 
   const handleLogout = () => {
-    // Reset permissions loaded flag before logout to ensure fresh permissions on next login
-    permissionsLoadedRef.current = false;
-    previousUserIdRef.current = null;
-    setVisibleItems([]); // Clear the visible items
-    clearPermissionsCache(); // Clear the permissions cache
+    setVisibleItems([]); 
     logout();
   };
 
@@ -137,6 +204,11 @@ const Sidebar = () => {
     );
   }
 
+  // Final items to display - include settings only for admins
+  const displayItems = isAdmin 
+    ? allMenuItems 
+    : visibleItems;
+
   return (
     <div className="w-64 bg-[#4664AD] text-white h-screen fixed right-0 top-0 flex flex-col">
       <div className="flex justify-between items-center border-b-4 border-white pb-4 p-4">
@@ -151,7 +223,7 @@ const Sidebar = () => {
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto">
-        {visibleItems.map((item, index) => (
+        {displayItems.map((item, index) => (
           <Link key={index} href={item.href}>
             <div
               className={`flex items-center justify-between py-4 px-4 mb-2 transition-colors font-cairo ${
@@ -172,7 +244,6 @@ const Sidebar = () => {
           </Link>
         ))}
       </nav>
-      {/* Logout Button */}
       <div className="mt-auto border-t border-white">
         <button
           onClick={handleLogout}

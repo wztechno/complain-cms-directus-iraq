@@ -11,7 +11,7 @@ interface Permission {
 }
 
 export interface UserPermissionsData {
-  role: string;
+  isAdmin: boolean; // Changed from role string to a boolean flag
   collections: {
     [collection: string]: {
       actions: string[];
@@ -41,26 +41,50 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
       console.log("Returning cached permissions");
       return userPermissionsCache;
     }
+    
+    console.log("Fetching fresh permissions data");
 
-    // Step 1: Get user data to get role ID
-    const userData = await fetchWithAuth('/users/me?fields=*,role.id');
-    console.log("User data fetched:", userData?.data);
+    // Get user info from localStorage
+    const storedUserInfo = localStorage.getItem('user_info');
+    if (!storedUserInfo) {
+      console.error('No user info found in localStorage');
+      return createBasicPermissions();
+    }
 
-    if (!userData?.data) {
-      throw new Error('No user data received');
+    // Parse the stored user info
+    let userData;
+    try {
+      userData = JSON.parse(storedUserInfo);
+      console.log("User data loaded from localStorage");
+    } catch (error) {
+      console.error("Error parsing user info from localStorage:", error);
+      return createBasicPermissions();
+    }
+
+    if (!userData) {
+      console.error('No user data after parsing');
+      return createBasicPermissions();
     }
 
     // Check if user is admin
-    if (userData.data.role === ADMIN_ROLE_ID) {
+    const roleId = userData.role?.id || userData.role;
+    const isAdmin = roleId === ADMIN_ROLE_ID;
+    
+    if (isAdmin) {
+      console.log("User is admin, granting full permissions");
       const adminPermissions: UserPermissionsData = {
-        role: ADMIN_ROLE_ID,
+        isAdmin: true,
         collections: {
           'Complaint': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
           'ComplaintTimeline': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
           'District': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
           'Status_category': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
           'Status_subcategory': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
-          'Users': { actions: ['create', 'read', 'update', 'delete'], permissions: {} }
+          'Users': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
+          'Complaint_main_category': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
+          'Complaint_sub_category': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
+          'Complaint_ratings': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
+          'settings': { actions: ['create', 'read', 'update', 'delete'], permissions: {} },
         },
         districtIds: [],
         statusSubcategoryIds: []
@@ -71,97 +95,344 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
       return adminPermissions;
     }
 
-    // Initialize permissions data
-    const userPermissionsData: UserPermissionsData = {
-      role: userData.data.role?.id || '',
+    // For non-admin users, permissions are based only on policies
+    const permissionsData: UserPermissionsData = {
+      isAdmin: false,
       collections: {},
       districtIds: [],
       statusSubcategoryIds: []
     };
 
-    // Step 2: Get role data to get policies
-    const roleId = typeof userData.data.role === 'object' ? userData.data.role.id : userData.data.role;
-    const roleResponse = await fetchWithAuth(`/roles/${roleId}?fields=*,policies.*`);
-    console.log("Role data fetched:", roleResponse?.data);
-
-    if (!roleResponse?.data?.policies) {
-      throw new Error('No policies found in role');
-    }
-
-    // Step 3: Get policy data for each policy in the role
-    const rolePolicies = roleResponse.data.policies;
-    console.log('Role policies:', rolePolicies);
-
-    // Process each policy
-    for (const rolePolicy of rolePolicies) {
-      try {
-        // Get policy ID based on whether it's an object or string
-        const policyId = typeof rolePolicy === 'object' ? rolePolicy.id : rolePolicy;
-        
-        // Fetch detailed policy data
-        const policyResponse = await fetchWithAuth(`/policies?user_id=${userData.data.id}`);
-        console.log(`Policy ${policyId} response:`, policyResponse);
-
-        if (!policyResponse?.data) continue;
-
-        const policy = policyResponse.data;
-
-        // Add basic collections that all users with a policy should have access to
-        const basicCollections = ['Complaint', 'Users'];
-        basicCollections.forEach(collection => {
-          if (!userPermissionsData.collections[collection]) {
-            userPermissionsData.collections[collection] = {
-              actions: ['read'],
-              permissions: {}
-            };
-            console.log(`Added basic read permission for ${collection} from policy ${policyId}`);
-          }
-        });
-
-        // Add district ID from policy if present
-        if (policy.district) {
-          const districtId = Number(policy.district);
-          if (!userPermissionsData.districtIds.includes(districtId)) {
-            userPermissionsData.districtIds.push(districtId);
-            console.log(`Added district ID ${districtId} from policy ${policyId}`);
+    // Add basic collections that all users should have access to
+    addBasicCollections(permissionsData);
+    
+    // NEW APPROACH: Get policies from /items/user_policies endpoint
+    try {
+      // Get the user ID from userData
+      const userId = userData.id;
+      if (!userId) {
+        console.error('User ID not found in localStorage data');
+        return permissionsData;
+      }
+      
+      console.log(`Fetching policies for user ID: ${userId}`);
+      
+      // Fetch user policies from the API
+      const userPoliciesResponse = await fetchWithAuth(`/items/user_policies?filter[user_id][_eq]=${userId}`);
+      
+      if (!userPoliciesResponse || !userPoliciesResponse.data || !userPoliciesResponse.data.length) {
+        console.warn(`No user policies found for user ID ${userId}`);
+        // Fall back to basic permissions
+        userPermissionsCache = permissionsData;
+        lastFetchTime = now;
+        return permissionsData;
+      }
+      
+      console.log(`Found ${userPoliciesResponse.data.length} user policies`, userPoliciesResponse.data);
+      
+      // Extract policy IDs from the response
+      const policyIds: string[] = [];
+      for (const userPolicy of userPoliciesResponse.data) {
+        if (userPolicy.policy) {
+          const policyId = typeof userPolicy.policy === 'object' ? userPolicy.policy.id : userPolicy.policy;
+          if (policyId && !policyIds.includes(policyId)) {
+            policyIds.push(String(policyId));
           }
         }
+      }
+      
+      if (policyIds.length === 0) {
+        console.warn('No valid policy IDs found in user policies');
+        userPermissionsCache = permissionsData;
+        lastFetchTime = now;
+        return permissionsData;
+      }
+      
+      console.log(`Extracted policy IDs: ${policyIds.join(', ')}`);
+      
+      // Process each policy to fetch permissions and extract district/status IDs
+      for (const policyId of policyIds) {
+        try {
+          // Fetch policy details first to get district_id and status_subcategory
+          let policyData = null;
+          try {
+            const policyResponse = await fetchWithAuth(`/policies/${policyId}`);
+            if (policyResponse && policyResponse.data) {
+              policyData = policyResponse.data;
+              console.log(`Successfully fetched policy data for ${policyId}:`, policyData);
+              
+              // Process district ID if present
+              if (policyData.district_id) {
+                const districtId = Number(policyData.district_id);
+                if (!isNaN(districtId) && !permissionsData.districtIds.includes(districtId)) {
+                  permissionsData.districtIds.push(districtId);
+                  console.log(`Added district ID ${districtId} from policy ${policyId}`);
+                }
+              }
+              
+              // Process status subcategory IDs if present
+              if (policyData.status_subcategory) {
+                const statusIds = Array.isArray(policyData.status_subcategory) 
+                  ? policyData.status_subcategory 
+                  : [policyData.status_subcategory];
+                
+                statusIds.forEach((statusId: string | number) => {
+                  const id = Number(statusId);
+                  if (!isNaN(id) && !permissionsData.statusSubcategoryIds.includes(id)) {
+                    permissionsData.statusSubcategoryIds.push(id);
+                    console.log(`Added status subcategory ID ${id} from policy ${policyId}`);
+                  }
+                });
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch policy ${policyId} details:`, error);
+          }
+          
+          // Now fetch permissions for this policy
+          console.log(`Fetching permissions for policy ID: ${policyId}`);
+          const permissionsResponse = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policyId}`);
+          
+          if (!permissionsResponse || !permissionsResponse.data || !permissionsResponse.data.length) {
+            console.warn(`No permissions found for policy ID ${policyId}`);
+            continue;
+          }
+          
+          console.log(`Found ${permissionsResponse.data.length} permissions for policy ${policyId}`);
+          
+          // Process the permissions for this policy
+          processCollectionPermissions(permissionsResponse.data, permissionsData);
+          
+          // If we don't have any collection permissions but we do have a valid policy,
+          // grant access to standard collections
+          if (Object.keys(permissionsData.collections).length <= 3) { // Only has basic collections
+            const sidebarCollections = [
+              'Complaint', 'ComplaintTimeline', 'Complaint_main_category',
+              'Complaint_ratings', 'Complaint_sub_category', 'District',
+              'Status_category', 'Status_subcategory', 'Users'
+            ];
+            
+            sidebarCollections.forEach(collection => {
+              if (!permissionsData.collections[collection]) {
+                permissionsData.collections[collection] = {
+                  actions: ['read'],
+                  permissions: {}
+                };
+                console.log(`Added default read permission for ${collection}`);
+              }
+            });
+          }
+        } catch (error) {
+          console.error(`Error processing policy ${policyId}:`, error);
+        }
+      }
+      
+      // Cache the permissions and return
+      userPermissionsCache = permissionsData;
+      lastFetchTime = now;
+      console.log("Final user permissions:", {
+        isAdmin: permissionsData.isAdmin,
+        collections: Object.keys(permissionsData.collections),
+        districtIds: permissionsData.districtIds,
+        statusSubcategoryIds: permissionsData.statusSubcategoryIds
+      });
+      return permissionsData;
+      
+    } catch (error) {
+      console.error("Error fetching user policies:", error);
+      
+      // FALLBACK: Try the legacy approach with policies from user data
+      try {
+        // If the new approach fails, try to use policies from user data (legacy approach)
+        console.log("Trying legacy approach with policies from user data");
+        
+        let userPolicies = userData.policies || [];
+        if (userPolicies[0] && Array.isArray(userPolicies[0])) {
+          userPolicies = userPolicies[0];
+        }
+        if (!Array.isArray(userPolicies)) {
+          userPolicies = [userPolicies].filter(Boolean);
+        }
+        
+        if (userPolicies.length === 0) {
+          console.log("No policies found for user using legacy approach");
+          return permissionsData;
+        }
+        
+        console.log(`Found ${userPolicies.length} policies using legacy approach`);
+        
+        // Process each policy
+        for (const policyItem of userPolicies) {
+          try {
+            // Get the policy ID
+            const policyId = normalizePolicyId(policyItem);
+            if (!policyId) {
+              console.warn("Skipping invalid policy:", policyItem);
+              continue;
+            }
+            
+            console.log(`Processing legacy policy ${policyId}`);
+            
+            // Fetch permissions for this policy
+            const policyPermissions = await fetchPolicyPermissions(policyId);
+            
+            if (policyPermissions.length > 0) {
+              processCollectionPermissions(policyPermissions, permissionsData);
+            } else {
+              console.log(`No permissions found for legacy policy ${policyId}`);
+            }
+          } catch (error) {
+            console.error(`Error processing legacy policy:`, error);
+          }
+        }
+        
+        // Cache the permissions and return
+        userPermissionsCache = permissionsData;
+        lastFetchTime = now;
+        console.log("Final user permissions (legacy):", permissionsData);
+        return permissionsData;
+      } catch (legacyError) {
+        console.error("Legacy approach also failed:", legacyError);
+        return permissionsData;
+      }
+    }
+  } catch (error) {
+    console.error('Error in getUserPermissions:', error);
+    return createBasicPermissions();
+  }
+}
 
-        // Add status subcategory IDs from policy if present
-        if (policy.status_subcategory) {
-          const statusIds = Array.isArray(policy.status_subcategory)
-            ? policy.status_subcategory
-            : [policy.status_subcategory];
+// Helper function to create basic permissions
+function createBasicPermissions(): UserPermissionsData {
+  return {
+    isAdmin: false,
+    collections: {
+      // Provide read access to basic collections
+      'Complaint': { actions: ['read'], permissions: {} },
+      'Users': { actions: ['read'], permissions: {} },
+      'settings': { actions: ['read'], permissions: {} }
+    },
+    districtIds: [],
+    statusSubcategoryIds: []
+  };
+}
 
-          statusIds.forEach((statusId: string | number) => {
-            const id = Number(statusId);
-            if (!userPermissionsData.statusSubcategoryIds.includes(id)) {
-              userPermissionsData.statusSubcategoryIds.push(id);
-              console.log(`Added status subcategory ID ${id} from policy ${policyId}`);
+// Helper function to add basic collections to permissions
+function addBasicCollections(permissionsData: UserPermissionsData) {
+  const basicCollections = ['Complaint', 'Users', 'settings'];
+  basicCollections.forEach(collection => {
+    if (!permissionsData.collections[collection]) {
+      permissionsData.collections[collection] = {
+        actions: ['read'],
+        permissions: {}
+      };
+      console.log(`Added basic read permission for ${collection}`);
+    }
+  });
+}
+
+// Helper function to normalize policy ID
+function normalizePolicyId(policyId: any): string | null {
+  if (!policyId) return null;
+  
+  if (typeof policyId === 'string') return policyId;
+  if (typeof policyId === 'number') return policyId.toString();
+  if (typeof policyId === 'object' && policyId.id) return policyId.id.toString();
+  
+  return null;
+}
+
+// Helper function to process collection permissions from policy
+function processCollectionPermissions(permissions: any[], permissionsData: UserPermissionsData) {
+  if (!Array.isArray(permissions)) return;
+  
+  permissions.forEach(permission => {
+    if (!permission.collection) return;
+    
+    // Add collection if it doesn't exist
+    if (!permissionsData.collections[permission.collection]) {
+      permissionsData.collections[permission.collection] = {
+        actions: [],
+        permissions: {}
+      };
+    }
+    
+    // Add action if not already present
+    if (permission.action && !permissionsData.collections[permission.collection].actions.includes(permission.action)) {
+      permissionsData.collections[permission.collection].actions.push(permission.action);
+      console.log(`Added ${permission.action} permission for ${permission.collection}`);
+    }
+    
+    // Process custom conditions (district, status_subcategory)
+    if (permission.permissions) {
+      // Handle district filter - support multiple formats
+      // Check for _eq format (single district)
+      if (permission.permissions._filter?.district?._eq) {
+        const districtId = Number(permission.permissions._filter.district._eq);
+        if (!isNaN(districtId) && !permissionsData.districtIds.includes(districtId)) {
+          permissionsData.districtIds.push(districtId);
+          console.log(`Added district ID ${districtId} from policy permission (_eq filter)`);
+        }
+      }
+      
+      // Check for _in format (multiple districts)
+      if (permission.permissions._filter?.district?._in) {
+        const districtIds = permission.permissions._filter.district._in;
+        if (Array.isArray(districtIds)) {
+          districtIds.forEach(id => {
+            const districtId = Number(id);
+            if (!isNaN(districtId) && !permissionsData.districtIds.includes(districtId)) {
+              permissionsData.districtIds.push(districtId);
+              console.log(`Added district ID ${districtId} from policy permission (_in filter)`);
             }
           });
         }
-      } catch (error) {
-        console.error(`Error processing policy:`, error);
-        // Continue with next policy even if one fails
+      }
+      
+      // Direct district field in permissions
+      if (permission.permissions.district) {
+        const districtValue = permission.permissions.district;
+        if (Array.isArray(districtValue)) {
+          districtValue.forEach(id => {
+            const districtId = Number(id);
+            if (!isNaN(districtId) && !permissionsData.districtIds.includes(districtId)) {
+              permissionsData.districtIds.push(districtId);
+              console.log(`Added district ID ${districtId} from direct district array in permission`);
+            }
+          });
+        } else {
+          const districtId = Number(districtValue);
+          if (!isNaN(districtId) && !permissionsData.districtIds.includes(districtId)) {
+            permissionsData.districtIds.push(districtId);
+            console.log(`Added district ID ${districtId} from direct district value in permission`);
+          }
+        }
+      }
+      
+      // Handle status subcategory filter
+      if (permission.permissions._filter?.status_subcategory?._eq) {
+        const statusId = Number(permission.permissions._filter.status_subcategory._eq);
+        if (!isNaN(statusId) && !permissionsData.statusSubcategoryIds.includes(statusId)) {
+          permissionsData.statusSubcategoryIds.push(statusId);
+          console.log(`Added status subcategory ID ${statusId} from policy permission`);
+        }
+      }
+      
+      // Check for status subcategory _in format (multiple statuses)
+      if (permission.permissions._filter?.status_subcategory?._in) {
+        const statusIds = permission.permissions._filter.status_subcategory._in;
+        if (Array.isArray(statusIds)) {
+          statusIds.forEach(id => {
+            const statusId = Number(id);
+            if (!isNaN(statusId) && !permissionsData.statusSubcategoryIds.includes(statusId)) {
+              permissionsData.statusSubcategoryIds.push(statusId);
+              console.log(`Added status subcategory ID ${statusId} from policy permission (_in filter)`);
+            }
+          });
+        }
       }
     }
-
-    // Cache the permissions
-    userPermissionsCache = userPermissionsData;
-    lastFetchTime = now;
-
-    console.log("Final user permissions:", userPermissionsData);
-    return userPermissionsData;
-  } catch (error) {
-    console.error('Error getting user permissions:', error);
-    return {
-      role: '',
-      collections: {},
-      districtIds: [],
-      statusSubcategoryIds: []
-    };
-  }
+  });
 }
 
 /**
@@ -172,9 +443,9 @@ export function hasPermission(
   collection: string,
   action: string
 ): boolean {
-  // Admin role check - admin has access to everything
-  if (userPermissions?.role === ADMIN_ROLE_ID) {
-    console.log(`Admin role detected, granting permission for ${collection}:${action}`);
+  // Admin check - admin has access to everything
+  if (userPermissions?.isAdmin) {
+    console.log(`Admin user detected, granting permission for ${collection}:${action}`);
     return true;
   }
   
@@ -233,11 +504,15 @@ export function hasPermission(
 export function applyPermissionFilters(userPermissions: UserPermissionsData): string {
   console.log("Applying permission filters with user permissions:", userPermissions);
   
-  // If user has a role but no specific restrictions, allow access to all records
-  if (userPermissions.role && 
-      !userPermissions.districtIds?.length && 
-      !userPermissions.statusSubcategoryIds?.length) {
-    console.log(`User has role ${userPermissions.role} with no specific restrictions - granting full access`);
+  // If user is admin, allow access to all records
+  if (userPermissions.isAdmin) {
+    console.log(`Admin user detected - granting full access without filters`);
+    return "";
+  }
+  
+  // If no specific restrictions, allow access to all records
+  if (!userPermissions.districtIds?.length && !userPermissions.statusSubcategoryIds?.length) {
+    console.log(`User has no specific district or status restrictions - granting full access`);
     return "";
   }
   
@@ -268,68 +543,21 @@ export function applyPermissionFilters(userPermissions: UserPermissionsData): st
  * Check if a complaint matches the user's permissions.
  * Returns true if the user has permission to see the complaint, false otherwise.
  */
-export function complaintMatchesPermissions(
-  complaint: any,
-  userPermissions: UserPermissionsData
-): boolean {
-  // Safety check for null/undefined complaint
-  if (!complaint) {
-    console.log("complaintMatchesPermissions: Complaint is null or undefined");
-    return false;
-  }
+export function complaintMatchesPermissions(complaint: any, permissions: any): boolean {
+  if (!permissions) return true;
   
-  // Admin role check - admin has access to all complaints
-  if (userPermissions?.role === ADMIN_ROLE_ID) {
-    console.log(`Admin role detected, granting access to complaint ${complaint.id || 'unknown'}`);
-    return true;
-  }
-  
-  const complaintId = complaint.id || 'unknown';
-  const complaintDistrict = complaint.district || null;
-  const complaintStatus = complaint.status_subcategory || null;
-  
-  // Debug info for this permission check
-  console.log(`Checking permissions for complaint ${complaintId}:`);
-  console.log(`- District restrictions: ${userPermissions.districtIds?.length ? userPermissions.districtIds.join(', ') : 'none'}`);
-  console.log(`- Status restrictions: ${userPermissions.statusSubcategoryIds?.length ? userPermissions.statusSubcategoryIds.join(', ') : 'none'}`);
-  console.log(`- Complaint district: ${complaintDistrict || 'none'}`);
-  console.log(`- Complaint status: ${complaintStatus || 'none'}`);
-  
-  // If no restrictions, allow all complaints
-  if (!userPermissions.districtIds?.length && !userPermissions.statusSubcategoryIds?.length) {
-    console.log(`Access ALLOWED for complaint ${complaintId} - user has no restrictions`);
-    return true;
-  }
-  
-  // Check district permission if user has district restrictions
-  let districtMatch = !userPermissions.districtIds?.length; // If no district restrictions, this check passes
-  if (userPermissions.districtIds?.length && complaintDistrict) {
-    // Compare district IDs - handle both string and number formats
-    districtMatch = userPermissions.districtIds.some(id => {
-      const permissionId = typeof id === 'string' ? id : id.toString();
-      const complaintDistrictId = typeof complaintDistrict === 'string' ? complaintDistrict : complaintDistrict.toString();
-      return permissionId === complaintDistrictId;
-    });
-    console.log(`District check for complaint ${complaintId}: ${districtMatch ? 'PASS' : 'FAIL'}`);
-  }
-  
-  // Check status subcategory permission if user has status restrictions
-  let statusMatch = !userPermissions.statusSubcategoryIds?.length; // If no status restrictions, this check passes
-  if (userPermissions.statusSubcategoryIds?.length && complaintStatus) {
-    // Compare status IDs - handle both string and number formats
-    statusMatch = userPermissions.statusSubcategoryIds.some(id => {
-      const permissionId = typeof id === 'string' ? id : id.toString();
-      const complaintStatusId = typeof complaintStatus === 'string' ? complaintStatus : complaintStatus.toString();
-      return permissionId === complaintStatusId;
-    });
-    console.log(`Status check for complaint ${complaintId}: ${statusMatch ? 'PASS' : 'FAIL'}`);
-  }
-  
-  // Both checks must pass to allow access
-  const result = districtMatch && statusMatch;
-  console.log(`Overall access for complaint ${complaintId}: ${result ? 'ALLOWED' : 'DENIED'}`);
-  
-  return result;
+  // Check district permissions
+  const districtMatches = !permissions.districtIds || 
+    permissions.districtIds.length === 0 ||
+    permissions.districtIds.includes(complaint.district);
+
+  // Check status subcategory permissions
+  const statusMatches = !permissions.statusSubcategoryIds ||
+    permissions.statusSubcategoryIds.length === 0 ||
+    permissions.statusSubcategoryIds.includes(complaint.status_subcategory);
+
+  // Both conditions must be met
+  return districtMatches && statusMatches;
 }
 
 /**
@@ -351,4 +579,27 @@ export async function refreshPermissions(): Promise<UserPermissionsData> {
   userPermissionsCache = null;
   lastFetchTime = 0;
   return await getUserPermissions();
+}
+
+/**
+ * Fetches permissions for a specific policy
+ * Uses the permissions endpoint which should be accessible to all authenticated users
+ */
+async function fetchPolicyPermissions(policyId: string): Promise<any[]> {
+  try {
+    console.log(`Fetching permissions for policy ${policyId} from permissions endpoint`);
+    // Use the direct endpoint with the proper policy field
+    const response = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policyId}`);
+    
+    if (!response || !response.data) {
+      console.warn(`No permissions found for policy ${policyId} in permissions endpoint`);
+      return [];
+    }
+    
+    console.log(`Found ${response.data.length} permissions for policy ${policyId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching permissions for policy ${policyId}:`, error);
+    return [];
+  }
 } 

@@ -11,6 +11,7 @@ interface User {
   phone_number: string | null;
   national_id_number: string | null;
   communication_method: string | null;
+  district?: number | null;
   created_at?: string;
 }
 
@@ -28,6 +29,7 @@ interface UserWithComplaints extends User {
 
 export default function CitizenDetailsPage({ params }: { params: { id: string } }) {
   const [user, setUser] = useState<UserWithComplaints | null>(null);
+  const [districtName, setDistrictName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -54,6 +56,19 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
         }
       } catch (error) {
         console.error('Error fetching user complaints:', error);
+      }
+
+      // Fetch district name
+      if (userData.district) {
+        try {
+          const districtRes = await fetch(`https://complaint.top-wp.com/items/District/${userData.district}`);
+          if (districtRes.ok) {
+            const districtData = await districtRes.json();
+            setDistrictName(districtData.data.name);
+          }
+        } catch (error) {
+          console.error('Error fetching district:', error);
+        }
       }
 
       setUser(userData);
@@ -143,7 +158,16 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
               طريقة التواصل المفضلة
             </label>
             <div className="bg-gray-50 p-4 rounded-lg text-right">
-              {user.communication_method || 'غير محدد'}
+              {user.communication_method || 'غير محددة'}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+              المحافظة
+            </label>
+            <div className="bg-gray-50 p-4 rounded-lg text-right">
+              {districtName || 'غير محددة'}
             </div>
           </div>
 
@@ -191,4 +215,4 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
       </div>
     </div>
   );
-} 
+}

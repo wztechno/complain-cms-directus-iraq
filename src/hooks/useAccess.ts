@@ -12,6 +12,7 @@ export function useAccess(collection: string, action: string) {
   const [hasAccess, setHasAccess] = useState(false);
   const [permissions, setPermissions] = useState<UserPermissionsData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -19,6 +20,7 @@ export function useAccess(collection: string, action: string) {
         setLoading(true);
         const userPermissions = await getUserPermissions();
         setPermissions(userPermissions);
+        setIsAdmin(userPermissions.isAdmin);
         
         const access = hasPermission(userPermissions, collection, action);
         setHasAccess(access);
@@ -34,7 +36,7 @@ export function useAccess(collection: string, action: string) {
     checkAccess();
   }, [collection, action]);
 
-  return { loading, hasAccess, permissions, error };
+  return { loading, hasAccess, permissions, error, isAdmin };
 }
 
 /**
@@ -47,6 +49,7 @@ export function useMultipleAccess(checks: Array<{ collection: string; action: st
   const [results, setResults] = useState<Record<string, boolean>>({});
   const [permissions, setPermissions] = useState<UserPermissionsData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Use string representation of checks as dependency to avoid rerenders with identical checks
   const checksString = JSON.stringify(checks);
@@ -57,6 +60,7 @@ export function useMultipleAccess(checks: Array<{ collection: string; action: st
         setLoading(true);
         const userPermissions = await getUserPermissions();
         setPermissions(userPermissions);
+        setIsAdmin(userPermissions.isAdmin);
         
         const accessResults: Record<string, boolean> = {};
         const parsedChecks = JSON.parse(checksString);
@@ -84,5 +88,5 @@ export function useMultipleAccess(checks: Array<{ collection: string; action: st
     return results[key] || false;
   };
 
-  return { loading, results, can, permissions, error };
+  return { loading, results, can, permissions, error, isAdmin };
 } 

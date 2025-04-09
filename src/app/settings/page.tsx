@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/utils/api';
 import { BsFilter, BsPersonFill } from 'react-icons/bs';
@@ -42,6 +41,7 @@ interface Policy {
       complaint_subcategory?: number[];
     };
   };
+  policy_user_id?: string[]; // Add this field
 }
 
 interface District {
@@ -64,8 +64,11 @@ interface CollectionPermission {
   customConditions?: {
     id?: string;
     district?: string;
-    status_subcategory_id?: string;
+    status_subcategory?: string;
     complaint_subcategory_id?: string;
+    // status_subcategory?: string;
+    districtId?: string;
+    statusSubcategoryId?: string;
   };
 }
 
@@ -73,7 +76,12 @@ interface CollectionPermissions {
   [key: string]: CollectionPermission;
 }
 
-// Function to create a default empty permissions object
+interface UserPolicy {
+  id: string;
+  user_id: string;  // Changed to single string
+  policy_id: string; // Changed to single string
+}
+
 const createEmptyCollectionPermissions = (): CollectionPermissions => {
   return {
     Complaint: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
@@ -82,7 +90,10 @@ const createEmptyCollectionPermissions = (): CollectionPermissions => {
     District: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Status_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Status_subcategory: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-    Users: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} }
+    Users: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
+    user_policies: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
+    directus_policies: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
+    directus_permissions: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
   };
 };
 
@@ -92,6 +103,7 @@ export default function SettingsPage() {
   const [districts, setDistricts] = useState<District[]>([]);
   const [subCategories, setSubCategories] = useState<StatusSubCategory[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [userPolicies, setUserPolicies] = useState<UserPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddPolicy, setShowAddPolicy] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>('');
@@ -106,12 +118,15 @@ export default function SettingsPage() {
     admin_access: false,
     app_access: true,
     roles: [] as string[],
-    permissions: {} as { [key: string]: { district?: string; status_subcategory?: number[]; complaint_subcategory?: number[] } }
+    permissions: {} as { [key: string]: { district?: string; status_subcategory?: number[]; complaint_subcategory?: number[] } },
+    policy_user_id: [] as string[] // Add this field
   });
   const [collectionPermissions, setCollectionPermissions] = useState<CollectionPermissions>(createEmptyCollectionPermissions());
   const [showCustomConditionsModal, setShowCustomConditionsModal] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [customConditionValue, setCustomConditionValue] = useState('');
+  const [customConditionValue2, setCustomConditionValue2] = useState('');
+
 
   useEffect(() => {
     fetchInitialData();
@@ -119,12 +134,13 @@ export default function SettingsPage() {
 
   const fetchInitialData = async () => {
     try {
-      const [rolesData, policiesData, districtsData, subCategoriesData, usersData] = await Promise.all([
+      const [rolesData, policiesData, districtsData, subCategoriesData, usersData, userPoliciesResponse] = await Promise.all([
         fetchWithAuth('/roles'),
         fetchWithAuth('/policies'),
         fetchWithAuth('/items/District'),
         fetchWithAuth('/items/Status_subcategory'),
-        fetchWithAuth('/users')
+        fetchWithAuth('/users'),
+        fetchWithAuth('/items/user_policies')
       ]);
 
       setRoles(rolesData.data);
@@ -132,6 +148,8 @@ export default function SettingsPage() {
       setDistricts(districtsData.data);
       setSubCategories(subCategoriesData.data.filter((sub: StatusSubCategory) => sub.name !== null));
       setUsers(usersData.data);
+      // Make sure we extract the data array before setting it to state
+      setUserPolicies(userPoliciesResponse.data || []);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -169,21 +187,21 @@ export default function SettingsPage() {
   const handleUserPermissionChange = (index: number, field: keyof UserPermission, value: any) => {
     const updatedPermissions = [...userPermissions];
     const previousUserId = updatedPermissions[index]?.userId;
-  
+    
     if (field === 'userId') {
       setSelectedUsers(prev => {
         const updated = prev.filter(id => id !== previousUserId);
         return [...updated, value];
       });
     }
-  
+    
     updatedPermissions[index] = {
       ...updatedPermissions[index],
       [field]: value
     };
-  
+    
     setUserPermissions(updatedPermissions);
-  
+
     // Update newPolicy permissions
     const updatedPermissions2 = { ...newPolicy.permissions };
     
@@ -205,46 +223,43 @@ export default function SettingsPage() {
         };
       }
     }
-  
+    
     setNewPolicy({
       ...newPolicy,
       permissions: updatedPermissions2
     });
   };
-  
-  // Update the handleEditPolicy function to properly initialize userPermissions
+
   const handleEditPolicy = async (policy: Policy) => {
     setIsEditing(true);
     setEditingPolicyId(policy.id);
-    setSelectedRole(policy.roles[0] || '');
-    setSelectedUsers(policy.users || []);
-  
-    // Initialize default permissions (all unchecked)
-    const defaultCollectionPermissions: CollectionPermissions = {
-      Complaint: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-      Complaint_main_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-      Complaint_sub_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-      District: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-      Status_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-      Status_subcategory: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-      Users: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} }
-    };
-  
-    // Fetch permissions associated with this policy
+    
+    if (Array.isArray(policy.roles) && policy.roles.length > 0) {
+      setSelectedRole(policy.roles[0]);
+    } else if (typeof policy.roles === 'string') {
+      setSelectedRole(policy.roles);
+    } else {
+      setSelectedRole('');
+    }
+    
+    // Get user IDs from user_policies for this policy
+    const policyUserPolicies = userPolicies.filter(up => 
+      up.policy_id.includes(policy.id)
+    );
+    const userIds = policyUserPolicies.flatMap(up => up.user_id);
+    
+    setSelectedUsers(userIds);
+    
+    const defaultCollectionPermissions = createEmptyCollectionPermissions();
+
     try {
-      console.log(`Fetching permissions for policy: ${policy.id}`);
       const permissionsResponse = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policy.id}`);
       const permissionsData = permissionsResponse.data;
       
-      console.log('Permissions data:', permissionsData);
-  
-      // Convert permissions to userPermissions format for user-specific permissions
       const userPerms = permissionsData
-        .filter((perm: any) => perm.user) // Only include user-specific permissions
+        .filter((perm: any) => perm.user)
         .map((perm: any) => {
-          // Extract district from permissions JSON
           const district = perm.permissions?._and?.[0]?.district?._eq;
-          // Extract status subcategories and complaint subcategories
           const statusSubcategories = perm.permissions?._and?.find((p: any) => p.status_subcategory)?._in || [];
           const complaintSubcategories = perm.permissions?._and?.find((p: any) => p.complaint_subcategory)?._in || [];
           
@@ -255,28 +270,20 @@ export default function SettingsPage() {
             complaint_subcategory: complaintSubcategories
           };
         });
-  
+
       setUserPermissions(userPerms);
-  
-      // Parse permissions for collections
+
       for (const permission of permissionsData) {
-        // Skip user-specific permissions as we already handled them
         if (permission.user) continue;
         
         const { collection, action, permissions: permissionFilters } = permission;
         
-        // Make sure collection exists in our state
         if (defaultCollectionPermissions[collection]) {
-          // Set the permission to true
           if (action === 'create' || action === 'read' || action === 'update' || action === 'delete' || action === 'share') {
             defaultCollectionPermissions[collection][action as keyof CollectionPermission] = true;
           }
           
-          // Handle custom conditions
           if (permissionFilters && Object.keys(permissionFilters).length > 0) {
-            console.log(`Custom conditions for ${collection}:`, permissionFilters);
-            
-            // Extract custom ID or district conditions
             if (collection === 'Status_subcategory' && permissionFilters._and?.[0]?.id?._eq) {
               defaultCollectionPermissions[collection].customConditions = {
                 ...defaultCollectionPermissions[collection].customConditions,
@@ -288,7 +295,6 @@ export default function SettingsPage() {
                 id: permissionFilters._and[0].id._eq
               };
             } else if (collection === 'Complaint') {
-              // For Complaint, look for district filter
               if (permissionFilters._and?.[0]?.district?._eq) {
                 defaultCollectionPermissions[collection].customConditions = {
                   ...defaultCollectionPermissions[collection].customConditions,
@@ -299,27 +305,26 @@ export default function SettingsPage() {
           }
         }
       }
-  
-      // Set the collection permissions state with the parsed values
-      console.log('Setting collection permissions:', defaultCollectionPermissions);
+
       setCollectionPermissions(defaultCollectionPermissions);
     } catch (error) {
       console.error('Error fetching permissions:', error);
     }
-  
+
     setNewPolicy({
       name: policy.name,
       description: policy.description || '',
       enforce_tfa: policy.enforce_tfa,
       admin_access: policy.admin_access,
       app_access: policy.app_access,
-      roles: policy.roles,
-      permissions: policy.permissions || {}
+      roles: Array.isArray(policy.roles) ? policy.roles : (policy.roles ? [policy.roles] : []),
+      permissions: policy.permissions || {},
+      policy_user_id: policyUserPolicies.map(up => up.id) // Set the user_policy IDs
     });
-    
+
     setShowAddPolicy(true);
   };
-  
+
   const handlePermissionToggle = (collection: string, action: keyof typeof collectionPermissions[string]) => {
     setCollectionPermissions(prev => ({
       ...prev,
@@ -330,7 +335,6 @@ export default function SettingsPage() {
     }));
   };
 
-  // Add this function to handle custom conditions
   const handleCustomConditionChange = (collection: string, value: string) => {
     setCollectionPermissions(prev => ({
       ...prev,
@@ -344,63 +348,30 @@ export default function SettingsPage() {
     }));
   };
 
-  // Update the handleSavePolicy function
   const handleSavePolicy = async () => {
     try {
-      // Create/Update policy first to get the policy ID
-      const initialPolicyData = {
-        name: newPolicy.name,
-        description: newPolicy.description || null,
-        enforce_tfa: newPolicy.enforce_tfa,
-        admin_access: newPolicy.admin_access,
-        app_access: newPolicy.app_access,
-        role: selectedRole,
-        users: userPermissions.map(p => p.userId),
-        permissions: [] // Start with empty permissions
-      };
-
-      // If editing, delete existing permissions first
-      if (isEditing && editingPolicyId) {
-        try {
-          const existingPermissions = await fetchWithAuth(`/permissions?filter[policy][_eq]=${editingPolicyId}`);
-          if (existingPermissions.data) {
-            await Promise.all(
-              existingPermissions.data.map(async (perm: any) => {
-                await fetchWithAuth(`/permissions/${perm.id}`, {
-                  method: 'DELETE'
-                });
-              })
-            );
-          }
-        } catch (error) {
-          console.error('Error deleting existing permissions:', error);
+      // 1. Create or update policy
+      const policyResponse = await fetchWithAuth(
+        isEditing ? `/policies/${editingPolicyId}` : '/policies',
+        {
+          method: isEditing ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newPolicy.name,
+            description: newPolicy.description,
+            enforce_tfa: newPolicy.enforce_tfa,
+            admin_access: newPolicy.admin_access,
+            app_access: newPolicy.app_access
+          })
         }
-      }
-
-      // Create/Update policy to get the ID
-      const endpoint = isEditing ? `/policies/${editingPolicyId}` : '/policies';
-      const method = isEditing ? 'PATCH' : 'POST';
-
-      const policyResponse = await fetchWithAuth(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(initialPolicyData)
-      });
-
-      if (!policyResponse.data) {
-        throw new Error('Failed to create/update policy');
-      }
-
-      // Get the policy ID
+      );
+  
       const policyId = isEditing ? editingPolicyId : policyResponse.data.id;
-      
+  
       if (!policyId) {
         throw new Error('Policy ID not found');
       }
 
-      // Now create permissions with the policy ID
       const createdPermissionIds: string[] = [];
       
       for (const [collection, actions] of Object.entries(collectionPermissions)) {
@@ -412,28 +383,43 @@ export default function SettingsPage() {
             action,
             role: selectedRole,
             fields: ["*"],
-            policy: policyId // Include the policy ID here
+            policy: policyId
           };
 
-          // Add custom conditions based on collection type
-          if (actions.customConditions?.id) {
-            if (collection === 'Status_subcategory') {
+          // Handle custom conditions based on collection type
+          if (collection === 'Status_subcategory' && actions.customConditions?.id) {
+            permissionData.permissions = {
+              _and: [{
+                id: { _eq: parseInt(actions.customConditions.id) }
+              }]
+            };
+          } else if (collection === 'District' && actions.customConditions?.id) {
+            permissionData.permissions = {
+              _and: [{
+                id: { _eq: parseInt(actions.customConditions.id) }
+              }]
+            };
+          } else if (collection === 'Complaint') {
+            const conditions = [];
+            
+            // Add district condition if specified
+            if (actions.customConditions?.districtId) {
+              conditions.push({
+                district: { _eq: parseInt(actions.customConditions.districtId) }
+              });
+            }
+            
+            // Add status subcategory condition if specified
+            if (actions.customConditions?.statusSubcategoryId) {
+              conditions.push({
+                status_subcategory: { _eq: parseInt(actions.customConditions.statusSubcategoryId) }
+              });
+            }
+            
+            // Only set permissions if we have at least one condition
+            if (conditions.length > 0) {
               permissionData.permissions = {
-                _and: [{
-                  id: { _eq: actions.customConditions.id }
-                }]
-              };
-            } else if (collection === 'District') {
-              permissionData.permissions = {
-                _and: [{
-                  id: { _eq: actions.customConditions.id }
-                }]
-              };
-            } else if (collection === 'Complaint') {
-              permissionData.permissions = {
-                _and: [{
-                  district: { _eq: actions.customConditions.id }
-                }]
+                _and: conditions
               };
             }
           }
@@ -457,7 +443,6 @@ export default function SettingsPage() {
         }
       }
 
-      // Update the policy with the created permission IDs
       if (createdPermissionIds.length > 0) {
         const updatePolicyResponse = await fetchWithAuth(`/policies/${policyId}`, {
           method: 'PATCH',
@@ -474,7 +459,110 @@ export default function SettingsPage() {
         }
       }
 
-      // Reset state and refresh data
+      // ---------------------------------------------------------------
+      // HANDLE USER POLICY ASSOCIATIONS - FIRST DELETE, THEN CREATE NEW
+      // ---------------------------------------------------------------
+      // 2. Create new user_policy associations if users are selected
+      if (Array.isArray(selectedUsers) && selectedUsers.length > 0) {
+        console.log(`Creating ${selectedUsers.length} new user_policy associations`);
+        
+        // Create data payload
+        const data = {
+          user_id: selectedUsers,
+          policy_id: [policyId]
+        };
+        
+        console.log("Payload for new user_policies:", data);
+        
+        try {
+          await fetchWithAuth('/items/user_policies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          console.log("Successfully created new user_policy associations");
+        } catch (error) {
+          console.error("Error creating user_policy associations:", error);
+        }
+      } else {
+        console.log("No users selected, skipping user_policy creation");
+      }
+
+            // 1. First delete ALL existing user_policies for this policy
+            console.log(`Removing all existing user_policies for policy ${policyId}`);
+            const existingPolicyUserPolicies = userPolicies.filter(up => 
+              up.policy_id && (Array.isArray(up.policy_id) ? 
+                up.policy_id.includes(policyId) : 
+                up.policy_id === policyId)
+            );
+            console.log("existingPolicyUserPolicies", existingPolicyUserPolicies);
+            // Delete existing user_policies in parallel
+            const deletePromises = existingPolicyUserPolicies.map(async (userPolicy) => {
+              try {
+                console.log(`Deleting user_policy: ${userPolicy.id}`);
+                await fetchWithAuth(`/items/user_policies/${userPolicy.id}`, {
+                  method: 'DELETE'
+                });
+                return true;
+              } catch (error) {
+                console.error(`Error deleting user_policy ${userPolicy.id}:`, error);
+                return false;
+              }
+            });
+            // Wait for all deletions to complete
+            await Promise.all(deletePromises);
+            console.log(`Removed ${existingPolicyUserPolicies.length} existing user_policies`);
+      
+      // Clear permissions cache and force refresh
+      localStorage.removeItem('permissionsCache');
+      
+      // Fetch updated user_policies to verify changes
+      console.log('Fetching updated user_policies to verify changes');
+      const updatedUserPoliciesResponse = await fetchWithAuth('/items/user_policies');
+      console.log('Updated user_policies response:', updatedUserPoliciesResponse);
+      
+      // Make sure we extract the data array before setting it to state
+      const updatedUserPoliciesData = updatedUserPoliciesResponse?.data || [];
+      
+      // Delete any orphaned user policies (those without a user_id)
+      try {
+        console.log('Checking for orphaned user policies with null user_id');
+        const orphanedPolicies = updatedUserPoliciesData.filter((policy: any) => 
+          !policy.user_id || policy.user_id.length === 0
+        );
+        
+        if (orphanedPolicies.length > 0) {
+          console.log(`Found ${orphanedPolicies.length} orphaned user policies, deleting them`);
+          
+          const deleteOrphanPromises = orphanedPolicies.map(async (policy: any) => {
+            try {
+              console.log(`Deleting orphaned user_policy: ${policy.id}`);
+              await fetchWithAuth(`/items/user_policies/${policy.id}`, {
+                method: 'DELETE'
+              });
+              return true;
+            } catch (error) {
+              console.error(`Error deleting orphaned user_policy ${policy.id}:`, error);
+              return false;
+            }
+          });
+          
+          await Promise.all(deleteOrphanPromises);
+          console.log('Finished cleaning up orphaned user policies');
+        } else {
+          console.log('No orphaned user policies found');
+        }
+      } catch (error) {
+        console.error('Error cleaning up orphaned user policies:', error);
+      }
+      
+      // Set only the data array to the state
+      setUserPolicies(updatedUserPoliciesData);
+      
+      // 4. Refresh all data to reflect changes
+      await fetchInitialData();
+      
+      // 5. Reset state and close modal
       setShowAddPolicy(false);
       setIsEditing(false);
       setEditingPolicyId(null);
@@ -485,41 +573,83 @@ export default function SettingsPage() {
         admin_access: false,
         app_access: true,
         roles: [],
-        permissions: {}
+        permissions: {},
+        policy_user_id: []
       });
       setUserPermissions([]);
       setSelectedUsers([]);
       setSelectedRole('');
-      fetchInitialData();
+      setCollectionPermissions(createEmptyCollectionPermissions());
+      
+      console.log("Policy saved successfully with updated user assignments");
     } catch (error) {
       console.error('Error saving policy:', error);
-      alert('حدث خطأ أثناء حفظ السياسة. يرجى المحاولة مرة أخرى.');
+      // TODO: Add error toast or UI feedback
+      // showToast("Failed to save policy", { type: "error" });
     }
   };
+  
+  
+  
+  
+  
 
-  // Add this function to handle opening the custom conditions modal
   const handleOpenCustomConditions = (collection: string) => {
     setSelectedCollection(collection);
-    setCustomConditionValue('');
+    
+    // Reset values when opening the modal
+    if (collection === 'Complaint') {
+      // For complaint, we might have existing values to keep
+      const currentConditions = collectionPermissions[collection]?.customConditions || {};
+      setCustomConditionValue(currentConditions.districtId || '');
+      setCustomConditionValue2(currentConditions.statusSubcategoryId || '');
+    } else {
+      // For other collections, just use the id field as before
+      setCustomConditionValue(collectionPermissions[collection]?.customConditions?.id || '');
+      setCustomConditionValue2('');
+    }
+    
     setShowCustomConditionsModal(true);
   };
 
-  // Add this function to handle saving custom conditions
   const handleSaveCustomConditions = () => {
-    if (!selectedCollection || !customConditionValue) return;
+    if (!selectedCollection) return;
 
-    setCollectionPermissions(prev => ({
-      ...prev,
-      [selectedCollection]: {
-        ...prev[selectedCollection],
-        customConditions: {
-          ...prev[selectedCollection].customConditions,
-          id: customConditionValue
+    if (selectedCollection === 'Complaint') {
+      // For Complaint, save both district and status subcategory
+      setCollectionPermissions(prev => ({
+        ...prev,
+        [selectedCollection]: {
+          ...prev[selectedCollection],
+          customConditions: {
+            ...prev[selectedCollection].customConditions,
+            districtId: customConditionValue,
+            statusSubcategoryId: customConditionValue2
+          }
         }
-      }
-    }));
+      }));
+    } else {
+      // For other collections, use the previous logic
+      if (!customConditionValue) return;
+      
+      setCollectionPermissions(prev => ({
+        ...prev,
+        [selectedCollection]: {
+          ...prev[selectedCollection],
+          customConditions: {
+            ...prev[selectedCollection].customConditions,
+            id: customConditionValue
+          }
+        }
+      }));
+    }
 
     setShowCustomConditionsModal(false);
+  };
+
+  // Function to get available users (not already selected)
+  const getAvailableUsers = () => {
+    return users.filter(user => !selectedUsers.includes(user.id));
   };
 
   if (loading) {
@@ -532,7 +662,6 @@ export default function SettingsPage() {
 
   return (
     <div className="p-8 mr-64">
-
       {/* Policies Section */}
       <div>
         <div className="flex justify-between items-center mb-8">
@@ -549,7 +678,8 @@ export default function SettingsPage() {
                   admin_access: false,
                   app_access: true,
                   roles: [],
-                  permissions: {}
+                  permissions: {},
+                  policy_user_id: []
                 });
                 setUserPermissions([]);
                 setSelectedUsers([]);
@@ -565,59 +695,68 @@ export default function SettingsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {policies.map((policy) => (
-            <div
-              key={policy.id}
-              className="bg-white rounded-xl shadow-sm p-4"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <button 
-                  onClick={() => handleEditPolicy(policy)}
-                  className="text-[#4664AD] hover:text-[#3A5499] text-sm"
-                >
-                  تعديل
-                </button>
-                <span className="text-sm text-gray-500">
-                  {new Date(policy.created_at || '').toLocaleDateString('ar-EG')}
-                </span>
-              </div>
+          {policies.map((policy) => {
+            // Get users assigned to this policy through user_policies
+            const policyUsers = userPolicies
+              .filter(up => up.policy_id.includes(policy.id))
+              .flatMap(up => up.user_id)
+              .map(userId => users.find(user => user.id === userId))
+              .filter(Boolean) as User[];
 
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium">{policy.name}</h3>
-              </div>
-
-              {policy.description && (
-                <p className="text-gray-600 text-sm mb-4">{policy.description}</p>
-              )}
-
-              <div className="flex justify-between border-t pt-2">
-                <div className="text-sm text-gray-500">
-                  {policy.permissions?.district && `المحافظة: ${
-                    districts.find(d => d.id.toString() === policy.permissions?.district)?.name
-                  }`}
+            return (
+              <div
+                key={policy.id}
+                className="bg-white rounded-xl shadow-sm p-4"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <button 
+                    onClick={() => handleEditPolicy(policy)}
+                    className="text-[#4664AD] hover:text-[#3A5499] text-sm"
+                  >
+                    تعديل
+                  </button>
+                  <span className="text-sm text-gray-500">
+                    {new Date(policy.created_at || '').toLocaleDateString('ar-EG')}
+                  </span>
                 </div>
-                <div className="flex items-center">
-                  {policy?.users?.length > 0 && (
-                    <div className="flex -space-x-2 rtl:space-x-reverse">
-                      {[...Array(Math.min(2, policy?.users?.length || 0))].map((_, index) => (
-                        <div
-                          key={index}
-                          className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center"
-                        >
-                          <BsPersonFill size={16} className="text-white" />
-                        </div>
-                      ))}
-                      {policy.users.length > 2 && (
-                        <div className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center">
-                          <span className="text-white text-xs font-medium">+{policy.users.length - 2}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium">{policy.name}</h3>
+                </div>
+
+                {policy.description && (
+                  <p className="text-gray-600 text-sm mb-4">{policy.description}</p>
+                )}
+
+                <div className="flex justify-between border-t pt-2">
+                  <div className="text-sm text-gray-500">
+                    {policy.permissions?.district && `المحافظة: ${
+                      districts.find(d => d.id.toString() === policy.permissions?.district)?.name
+                    }`}
+                  </div>
+                  <div className="flex items-center">
+                    {policyUsers.length > 0 && (
+                      <div className="flex -space-x-2 rtl:space-x-reverse">
+                        {[...Array(Math.min(2, policyUsers.length))].map((_, index) => (
+                          <div
+                            key={index}
+                            className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center"
+                          >
+                            <BsPersonFill size={16} className="text-white" />
+                          </div>
+                        ))}
+                        {policyUsers.length > 2 && (
+                          <div className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center">
+                            <span className="text-white text-xs font-medium">+{policyUsers.length - 2}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -675,7 +814,74 @@ export default function SettingsPage() {
                 </select>
               </div>
 
-              {/* New Permissions Section */}
+              {/* User Assignment Section */}
+              <div className="border rounded-lg p-6 mb-6 bg-white">
+                <h3 className="text-xl font-semibold mb-4 text-right">تعيين المستخدمين</h3>
+                
+                <div className="space-y-4">
+                  {/* Add User Dropdown */}
+                  <div className="flex items-center gap-4">
+                    <select
+                      className="flex-1 border border-gray-300 rounded-lg p-2 text-right"
+                      dir="rtl"
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setSelectedUsers([...selectedUsers, e.target.value]);
+                          e.target.value = ''; // Reset the dropdown
+                        }
+                      }}
+                    >
+                      <option value="">اختر مستخدم لإضافته</option>
+                      {getAvailableUsers().map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.first_name} {user.last_name} ({user.email})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleAddUserToPolicy}
+                      className="bg-[#4664AD] text-white px-4 py-2 rounded-lg text-sm"
+                    >
+                      إضافة مستخدم
+                    </button>
+                  </div>
+
+                  {/* List of assigned users */}
+                  <div className="space-y-2">
+                    {selectedUsers.map((userId) => {
+                      const user = users.find(u => u.id === userId);
+                      return (
+                        <div key={userId} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                          <div>
+                            {user ? (
+                              <span>
+                                {user.first_name} {user.last_name} ({user.email})
+                              </span>
+                            ) : (
+                              <span>Unknown User (ID: {userId})</span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSelectedUsers(selectedUsers.filter(id => id !== userId));
+                              // Also remove from userPermissions if exists
+                              const userPermIndex = userPermissions.findIndex(up => up.userId === userId);
+                              if (userPermIndex !== -1) {
+                                handleRemoveUserPermission(userPermIndex);
+                              }
+                            }}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Permissions Section */}
               <div className="border rounded-lg p-6 mb-6 bg-white">
                 <h3 className="text-xl font-semibold mb-4 text-right">صلاحيات الوصول</h3>
                 <div className="space-y-4">
@@ -691,16 +897,18 @@ export default function SettingsPage() {
                       <div className="flex justify-center font-bold">تخصيص</div>
                     </div>
                   </div>
-                  
+                                  
                   {[
                     { name: 'Complaint', label: 'الشكوى', hasCustom: true },
                     { name: 'Complaint_main_category', label: 'الفئة الرئيسية للشكوى', hasCustom: false },
-                    { name: 'Complaint_sub_category', label: 'الفئة الفرعية للشكوى', hasCustom: true },
-                    { name: 'District', label: 'المحافظة', hasCustom: true },
-                    { name: 'Status_category', label: 'الفئة الرئيسية للحالة', hasCustom: true },
-                    { name: 'Status_subcategory', label: 'الفئة الفرعية للحالة', hasCustom: true },
-                    { name: 'Users', label: 'المستخدمين', hasCustom: false }
-                    
+                    { name: 'Complaint_sub_category', label: 'الفئة الفرعية للشكوى', hasCustom: false },
+                    { name: 'District', label: 'المحافظة', hasCustom: false },
+                    { name: 'Status_category', label: 'الفئة الرئيسية للحالة', hasCustom: false },
+                    { name: 'Status_subcategory', label: 'الفئة الفرعية للحالة', hasCustom: false },
+                    { name: 'Users', label: 'المستخدمين', hasCustom: false },
+                    { name: 'user_policies', label: 'السياسات المخصصة للمستخدم', hasCustom: false },
+                    { name: 'directus_policies', label: 'السياسات', hasCustom: false },
+                    { name: 'directus_permissions', label: 'الصلاحيات', hasCustom: false },
                   ].map((collection) => (
                     <div key={collection.name} className="grid grid-cols-12 gap-4 items-center">
                       <div className="col-span-4 text-right">{collection.label}</div>
@@ -763,7 +971,7 @@ export default function SettingsPage() {
             </h2>
 
             <div className="space-y-4">
-              {selectedCollection === 'Status_subcategory' && (
+              {/* {selectedCollection === 'Status_subcategory' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
                     معرف الفئة الفرعية للحالة
@@ -798,26 +1006,47 @@ export default function SettingsPage() {
                     ))}
                   </select>
                 </div>
-              )}
+              )} */}
 
               {selectedCollection === 'Complaint' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                    المحافظة
-                  </label>
-                  <select
-                    value={customConditionValue}
-                    onChange={(e) => setCustomConditionValue(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                    dir="rtl"
-                  >
-                    <option value="">اختر المحافظة</option>
-                    {districts.map((district) => (
-                      <option key={district.id} value={district.id}>
-                        {district.name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="space-y-4">
+                  {/* District Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                      المحافظة
+                    </label>
+                    <select
+                      value={customConditionValue}
+                      onChange={(e) => setCustomConditionValue(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                      dir="rtl"
+                    >
+                      <option value="">اختر المحافظة</option>
+                      {districts.map((district) => (
+                        <option key={district.id} value={district.id}>
+                          {district.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Status Subcategory Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                      الفئة الفرعية للحالة
+                    </label>
+                    <select
+                      value={customConditionValue2}
+                      onChange={(e) => setCustomConditionValue2(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                      dir="rtl"
+                    >
+                      <option value="">اختر الفئة الفرعية للحالة</option>
+                      {subCategories.map(sub => (
+                        <option key={sub.id} value={sub.id}>{sub.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -841,4 +1070,4 @@ export default function SettingsPage() {
       )}
     </div>
   );
-} 
+}

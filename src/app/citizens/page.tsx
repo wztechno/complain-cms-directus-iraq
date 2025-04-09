@@ -12,11 +12,19 @@ interface User {
   email: string;
   phone: string | null;
   created_at?: string;
+  district?: number;
+}
+
+interface District {
+  id: number;
+  name: string;
 }
 
 export default function CitizensPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [districtMap, setDistrictMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const router = useRouter();
@@ -26,31 +34,47 @@ export default function CitizensPage() {
     email: '',
     phone: '',
     startDate: '',
-    endDate: ''
+    endDate: '',
+    district: '',
   });
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsersAndDistricts();
   }, []);
 
   useEffect(() => {
     handleFilter();
   }, [filters]);
 
-  const fetchUsers = async () => {
+  const fetchUsersAndDistricts = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Users');
-      if (!res.ok) {
-        throw new Error('Failed to fetch users');
+      const [userRes, districtRes] = await Promise.all([
+        fetch('https://complaint.top-wp.com/items/Users'),
+        fetchWithAuth('/items/District'),
+      ]);
+
+      if (!userRes.ok || !districtRes?.data) {
+        throw new Error('Failed to fetch users or districts');
       }
-      const data = await res.json();
-      // Filter out users with null names or emails
-      const filteredData = data.data.filter((user: User) => user.full_name !== null && user.email !== null);
+
+      const userData = await userRes.json();
+      const filteredData = userData.data.filter(
+        (user: User) => user.full_name !== null && user.email !== null
+      );
+
       setUsers(filteredData);
       setFilteredUsers(filteredData);
+      setDistricts(districtRes.data);
+
+      const districtLookup = districtRes.data.reduce((acc: Record<number, string>, district: District) => {
+        acc[district.id] = district.name;
+        return acc;
+      }, {});
+      setDistrictMap(districtLookup);
+
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error fetching users or districts:', error);
       setLoading(false);
     }
   };
@@ -59,19 +83,19 @@ export default function CitizensPage() {
     let filtered = [...users];
 
     if (filters.name) {
-      filtered = filtered.filter(user => 
+      filtered = filtered.filter(user =>
         user.full_name.toLowerCase().includes(filters.name.toLowerCase())
       );
     }
 
     if (filters.email) {
-      filtered = filtered.filter(user => 
+      filtered = filtered.filter(user =>
         user.email.toLowerCase().includes(filters.email.toLowerCase())
       );
     }
 
     if (filters.phone) {
-      filtered = filtered.filter(user => 
+      filtered = filtered.filter(user =>
         user.phone?.includes(filters.phone)
       );
     }
@@ -90,6 +114,13 @@ export default function CitizensPage() {
       });
     }
 
+    if (filters.district) {
+      filtered = filtered.filter(user => {
+        const name = districtMap[user.district || 0];
+        return name?.includes(filters.district);
+      });
+    }
+
     setFilteredUsers(filtered);
   };
 
@@ -100,7 +131,6 @@ export default function CitizensPage() {
 
   const formatPhoneNumber = (phone: string | null) => {
     if (!phone) return '';
-    // Add +964 prefix if not present
     return phone.startsWith('+') ? phone : `+964 ${phone}`;
   };
 
@@ -192,7 +222,7 @@ export default function CitizensPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
-                الى تاريخ
+                إلى تاريخ
               </label>
               <input
                 type="date"
@@ -200,6 +230,22 @@ export default function CitizensPage() {
                 onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
                 className="w-full border border-gray-300 rounded-md p-2"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                المحافظة
+              </label>
+              <select
+                value={filters.district}
+                onChange={(e) => setFilters({ ...filters, district: e.target.value })}
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              >
+                <option value="">كل المحافظات</option>
+                {districts.map((d) => (
+                  <option key={d.id} value={d.name}>{d.name}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
@@ -226,9 +272,14 @@ export default function CitizensPage() {
             {user.phone && (
               <p className="text-gray-600">{formatPhoneNumber(user.phone)}</p>
             )}
+            {user.district && (
+              <p className="text-sm text-gray-500 mt-2">
+                المحافظة: {districtMap[user.district] || 'غير معروفة'}
+              </p>
+            )}
           </div>
         ))}
       </div>
     </div>
   );
-} 
+}

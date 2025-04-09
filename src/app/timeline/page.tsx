@@ -9,9 +9,13 @@ import { exportToCSV } from '@/utils/export';
 interface TimelineEntry {
   id: number;
   complaint_id: string;
+  user_id: string;
   status_subcategory: string;
   statusDate: string;
   date: string;
+  complaint_name?: string;
+  user_name?: string;
+  status_name?: string;
 }
 
 export default function TimelinePage() {
@@ -31,28 +35,63 @@ export default function TimelinePage() {
 
   useEffect(() => {
     handleFilter();
-  }, [filters]);
+  }, [filters, complaints]);
 
   const fetchComplaints = async () => {
     try {
-      const response = await fetchWithAuth('/items/ComplaintTimeline');
-      const data = response.data;
-      setComplaints(data);
-      setFilteredComplaints(data);
+      const [timelineRes, complaintsRes, usersRes, statusRes] = await Promise.all([
+        fetchWithAuth('/items/ComplaintTimeline'),
+        fetchWithAuth('/items/Complaint'),
+        fetchWithAuth('/items/Users'),
+        fetchWithAuth('/items/Status_subcategory')
+      ]);
+    
+      const timelineData = timelineRes.data;
+    
+      // Map: complaint.id -> complaint.title and complaint.user (user_id)
+      const complaintMap = Object.fromEntries(
+        complaintsRes.data.map((c: any) => [c.id, { title: c.title, user: c.user }])
+      );
+    
+      // Map: user.id -> full name
+      const userMap = Object.fromEntries(
+        usersRes.data.map((u: any) => [Number(u.id), u.full_name])
+      );
+      console.log("userMap",userMap);
+      
+    
+      // Map: status_subcategory.id -> name
+      const statusMap = Object.fromEntries(
+        statusRes.data.map((s: any) => [s.id, s.name])
+      );
+    
+      const enriched = timelineData.map((entry: any) => {
+        const complaint = complaintMap[entry.complaint_id];
+        const userName = complaint?.user ? userMap[String(complaint.user)] : '—';
+    //     console.log("complaint",complaint);
+    // console.log("user",userName);
+        return {
+          ...entry,
+          complaint_name: complaint?.title || '—',
+          user_name: userName,
+          status_name: statusMap[entry.status_subcategory] || '—'
+        };
+      });
+    
+      setComplaints(enriched);
+      setFilteredComplaints(enriched);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch complaints:', error);
       setLoading(false);
-    }
+    }    
   };
 
   const handleFilter = () => {
     let filtered = [...complaints];
 
     if (filters.status) {
-      filtered = filtered.filter(complaint => 
-        complaint.status_subcategory === filters.status
-      );
+      filtered = filtered.filter(complaint => complaint.status_subcategory === filters.status);
     }
 
     if (filters.startDate) {
@@ -73,7 +112,7 @@ export default function TimelinePage() {
   };
 
   const handleExport = () => {
-    const headers = ['complaint_id', 'status_subcategory', 'statusDate'];
+    const headers = ['complaint_name', 'user_name', 'status_name', 'statusDate'];
     exportToCSV(filteredComplaints, headers, 'timeline_export');
   };
 
@@ -118,7 +157,7 @@ export default function TimelinePage() {
                 className="w-full border border-gray-300 rounded-md p-2 text-right"
               >
                 <option value="">الكل</option>
-                {Array.from(new Set(complaints.map(c => c.status_subcategory)))
+                {Array.from(new Set(complaints.map(c => c.status_name)))
                   .filter(Boolean)
                   .map(status => (
                     <option key={status} value={status}>{status}</option>
@@ -159,8 +198,9 @@ export default function TimelinePage() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">رقم الشكوى</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">الفئة الفرعية للحالة</th>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">الشكوى</th>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">المستخدم</th>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">الحالة</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">تاريخ الحالة</th>
               </tr>
             </thead>
@@ -174,4 +214,4 @@ export default function TimelinePage() {
       </div>
     </div>
   );
-} 
+}

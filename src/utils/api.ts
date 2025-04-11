@@ -498,7 +498,18 @@ if (endpoint.startsWith('/policies')) {
         console.error('Error parsing district response preview:', e);
       }
     }
-    
+
+      if (endpoint.includes('/items/Complaint_sub_category')) {
+    const directEndpoint = `${BASE_URL}${endpoint}`;
+    console.log(`Fetching complaint subcategory data from: ${directEndpoint}`);
+
+    const response = await fetch(directEndpoint, {
+      ...options,
+      headers,
+    });
+
+    return await response.json();
+  }
     // Special handling for 401/403 errors - but don't throw if coming from our proxy endpoints
     if ((response.status === 401 || response.status === 403) && !endpoint.startsWith('/api/')) {
       // Authentication failed - token might be expired
@@ -536,7 +547,9 @@ if (endpoint.startsWith('/policies')) {
   } catch (error) {
     console.error(`Error in fetchWithAuth for ${endpoint}:`, error);
     throw error;
+ 
   }
+  
 }
 
 /**

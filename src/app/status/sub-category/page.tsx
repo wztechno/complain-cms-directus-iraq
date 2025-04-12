@@ -51,13 +51,39 @@ export default function StatusSubCategoryPage() {
   useEffect(() => {
     const userInfoStr = localStorage.getItem('user_info');
     const hasReloaded = localStorage.getItem('reload_once');
-  
+    const userInfo = userInfoStr ? JSON.parse(userInfoStr) : null;
+    const previousUserId = localStorage.getItem('current_user_id');
+    const currentUserId = userInfo?.id;
+    
+    // Check if this is a post-logout navigation
+    const isPostLogout = sessionStorage.getItem('logged_out');
+    if (isPostLogout) {
+      // Clear the flag so we don't keep reloading
+      sessionStorage.removeItem('logged_out');
+      // If we're coming back to this page after login, make sure we get fresh data
+      console.log('Detected post-logout navigation, refreshing page...');
+      window.location.reload();
+      return;
+    }
+    
+    // If we have a user ID and it's different from the previous one stored, reload
+    if (currentUserId && previousUserId && currentUserId !== previousUserId) {
+      console.log('User changed, reloading page...');
+      window.location.reload();
+      return;
+    }
+    
+    // Store the current user ID for future comparison
+    if (currentUserId) {
+      localStorage.setItem('current_user_id', currentUserId);
+    }
+
     if (!userInfoStr && !hasReloaded) {
       localStorage.setItem('reload_once', 'true');
       window.location.reload();
       return;
     }
-  
+
     if (hasReloaded) {
       localStorage.removeItem('reload_once');
     }

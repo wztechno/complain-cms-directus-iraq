@@ -88,6 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Clear any existing tokens or user info
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user_info');
+      localStorage.removeItem('current_user_id');
+      localStorage.removeItem('reload_once');
+      
+      // Clear any lingering logout flag
+      sessionStorage.removeItem('logged_out');
       
       // Always use the direct API endpoint
       const loginUrl = 'https://complaint.top-wp.com/auth/login';
@@ -193,12 +198,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     console.log("Logout initiated");
+    
+    // Check if user is on the status/sub-category page
+    const isOnStatusSubCategoryPage = window.location.pathname.includes('/status/sub-category');
+    
+    // Clear all relevant storage items
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_info');
+    localStorage.removeItem('current_user_id');
+    localStorage.removeItem('reload_once');
+    
+    // Clear application state
     setToken(null);
     setUserInfo(null);
     setIsAuthenticated(false);
-    router.push('/login');
+    
+    // Force page reload if on status/sub-category page before navigation
+    if (isOnStatusSubCategoryPage) {
+      console.log("User was on status/sub-category page, forcing reload");
+      // Set flag to indicate we're coming from logout
+      sessionStorage.setItem('logged_out', 'true');
+      // Redirect to login page
+      window.location.href = '/login';
+    } else {
+      // Normal navigation for other pages
+      router.push('/login');
+    }
   };
 
   return (

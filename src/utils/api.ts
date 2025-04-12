@@ -510,6 +510,17 @@ if (endpoint.startsWith('/policies')) {
 
     return await response.json();
   }
+
+  if (endpoint.includes('/files/')) {
+    const directEndpoint = `${BASE_URL}${endpoint}`;
+    console.log(`Fetching file data from: ${directEndpoint}`);
+
+    const response = await fetch(directEndpoint, {
+      ...options,
+      headers,
+    });
+    return await response.json();
+  }
     // Special handling for 401/403 errors - but don't throw if coming from our proxy endpoints
     if ((response.status === 401 || response.status === 403) && !endpoint.startsWith('/api/')) {
       // Authentication failed - token might be expired

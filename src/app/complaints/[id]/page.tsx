@@ -144,9 +144,10 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         fetchWithAuth(`/items/Complaint/${params.id}`),
         fetchWithAuth('/items/District'),
         fetchWithAuth('/items/Status_subcategory'),
-        fetchWithAuth('/items/Complaint_sub_category'),
+        fetch('https://complaint.top-wp.com/items/Complaint_sub_category'),
       ]);
 
+      const complaintSubcategoriesData = await complaintSubcategoriesRes?.json();
       if (!complaintRes?.data) {
         setError('لم يتم العثور على الشكوى');
         setLoading(false);
@@ -323,7 +324,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       setDistricts(Object.fromEntries(districtsRes.data.map((d: any) => [d.id, d.name])));
       setSubcategories(Object.fromEntries(subcategoriesRes.data.map((s: any) => [s.id, s.name])));
       setStatusSubcategories(Object.fromEntries(subcategoriesRes.data.map((s: any) => [s.id, s.name])));
-      setComplaintSubcategories(Object.fromEntries(complaintSubcategoriesRes.data.map((s: any) => [s.id, s.name])));
+      setComplaintSubcategories(Object.fromEntries(complaintSubcategoriesData.data.map((s: any) => [s.id, s.name])));
       setLoading(false);
 
       // In the fetchData function, add logging to see what's coming back from the API
@@ -634,9 +635,11 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
                 max="100"
                 value={editForm.completion_percentage !== undefined ? editForm.completion_percentage : 0}
                 onChange={(e) => {
-                  const value = e.target.value === '' ? 0 : Number(e.target.value);
-                  setEditForm({...editForm, completion_percentage: value});
-                  console.log('Updated percentage to:', value); // Add debug output
+                  // Ensure we're passing a number to the state
+                  const numValue = e.target.value === '' ? 0 : Number(e.target.value);
+                  // Log both the original value and converted value for debugging
+                  console.log('Percentage input value:', e.target.value, 'Converted to:', numValue, 'Type:', typeof numValue);
+                  setEditForm({...editForm, completion_percentage: numValue});
                 }}
                 className="w-full border border-gray-300 p-2 rounded text-right"
               />

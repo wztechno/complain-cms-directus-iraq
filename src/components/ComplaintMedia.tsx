@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaImage, FaVideo, FaVolumeUp, FaFileAlt, FaEye, FaDownload, FaPlay, FaPause, FaStop, FaSpinner, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaImage, FaVideo, FaVolumeUp, FaFileAlt, FaEye, FaDownload, FaPlay, FaPause, FaStop, FaSpinner, FaExternalLinkAlt, FaFilePdf, FaFileWord } from 'react-icons/fa';
 
 interface MediaFile {
   id: string;
@@ -20,12 +20,35 @@ interface ComplaintMediaProps {
   files?: MediaFile[];
 }
 
+// Function to get file type icon based on filename
+const getFileIcon = (filename: string) => {
+  const extension = filename.split('.').pop()?.toLowerCase();
+  
+  switch(extension) {
+    case 'pdf':
+      return <FaFilePdf className="text-red-500 mr-2" />;
+    case 'doc':
+    case 'docx':
+      return <FaFileWord className="text-blue-600 mr-2" />;
+    default:
+      return <FaFileAlt className="text-gray-400 mr-2" />;
+  }
+};
+
+// Function to check if file is viewable in browser
+const isViewableInBrowser = (filename: string) => {
+  const extension = filename.split('.').pop()?.toLowerCase();
+  return extension === 'pdf' || extension === 'docx' || extension === 'doc';
+};
+
 const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
   images = [],
   videos = [],
   audios = [],
   files = []
 }) => {
+  const [activeDocPreview, setActiveDocPreview] = useState<string | null>(null);
+  
   // Function to format file size
   const formatFileSize = (bytes?: number): string => {
     if (!bytes) return 'غير معروف';
@@ -43,6 +66,15 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  // Function to toggle document preview
+  const toggleDocPreview = (fileId: string) => {
+    if (activeDocPreview === fileId) {
+      setActiveDocPreview(null);
+    } else {
+      setActiveDocPreview(fileId);
+    }
   };
 
   return (
@@ -173,25 +205,47 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
             <FaFileAlt className="text-[#4664AD]" />
             <h3 className="text-lg font-semibold">الملفات المرفقة</h3>
           </div>
-          <div className="space-y-2">
-            {files.map((file) => (
-              <div key={file.id} className="flex justify-between items-center border-b border-gray-100 py-2">
-                <div className="flex items-center">
-                  <FaFileAlt className="text-gray-400 mr-2" />
-                  <span className="text-sm text-gray-700">{file.title || file.filename_download}</span>
+          <div className="space-y-4">
+            {files.map((file) => {
+              const isViewable = isViewableInBrowser(file.filename_download);
+              const isActive = activeDocPreview === file.id;
+              
+              return (
+                <div key={file.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="flex justify-between items-center p-3 bg-gray-50">
+                    <div className="flex items-center">
+                      {getFileIcon(file.filename_download)}
+                      <span className="text-sm text-gray-700">{file.title || file.filename_download}</span>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <span className="text-xs text-gray-500">{formatFileSize(file.filesize)}</span>
+                      
+                      {isViewable && (
+                        <button
+                          onClick={() => toggleDocPreview(file.id)}
+                          className="p-1.5 bg-gray-100 hover:bg-blue-100 rounded text-gray-700 hover:text-blue-700"
+                          title="عرض المستند"
+                        >
+                          <FaEye size={12} />
+                        </button>
+                      )}
+                      
+                      <a 
+                        href={file.src} 
+                        download={file.filename_download}
+                        className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+                        title="تنزيل الملف"
+                      >
+                        <FaDownload size={12} />
+                      </a>
+                    </div>
+                  </div>
+                  
+                  {/* Document Preview Section */}
+                  {isActive && <DocumentViewer file={file} />}
                 </div>
-                <div className="flex gap-2 items-center">
-                  <span className="text-xs text-gray-500">{formatFileSize(file.filesize)}</span>
-                  <a 
-                    href={file.src} 
-                    download={file.filename_download}
-                    className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
-                  >
-                    <FaDownload size={12} />
-                  </a>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1059,6 +1113,179 @@ const M4AAudioPlayer: React.FC<M4AAudioPlayerProps> = ({ audioSrc, audioTitle })
       
       {/* Hidden audio element */}
       <audio ref={audioRef} className="hidden" />
+    </div>
+  );
+};
+
+// Document Viewer Component
+interface DocumentViewerProps {
+  file: MediaFile;
+}
+
+const DocumentViewer: React.FC<DocumentViewerProps> = ({ file }) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [viewerType, setViewerType] = useState<'default' | 'google' | 'office'>('default');
+  const extension = file.filename_download.split('.').pop()?.toLowerCase();
+
+  // Prepare a preview URL that won't trigger download
+  const getPreviewUrl = () => {
+    // Remove any download=true parameters that might force downloading
+    let previewUrl = file.src;
+    previewUrl = previewUrl.replace(/[&?]download=true/g, '');
+    
+    // Add view parameter for PDFs if not already present
+    if (extension === 'pdf' && !previewUrl.includes('#')) {
+      previewUrl = `${previewUrl}#toolbar=1&view=FitH&navpanes=1`;
+    }
+    
+    return previewUrl;
+  };
+
+  const handleIframeLoad = () => {
+    setIsLoading(false);
+  };
+
+  const handleIframeError = () => {
+    // If default viewer fails, try Google Docs viewer for supported file types
+    if (viewerType === 'default' && (extension === 'pdf' || extension === 'docx' || extension === 'doc')) {
+      setViewerType('google');
+      setIsLoading(true);
+    } else if (viewerType === 'google' && (extension === 'docx' || extension === 'doc')) {
+      // If Google fails for Office docs, try Microsoft Office Online
+      setViewerType('office');
+      setIsLoading(true);
+    } else {
+      // If all viewers fail, show error
+      setError('حدث خطأ أثناء تحميل المستند.');
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-3 border-t border-gray-200">
+      <h4 className="text-sm font-medium mb-2">معاينة المستند</h4>
+      
+      {isLoading && (
+        <div className="flex justify-center items-center p-4">
+          <FaSpinner className="animate-spin text-blue-500 mr-2" />
+          <span>جاري تحميل المستند...</span>
+        </div>
+      )}
+      
+      {error && (
+        <div className="p-4 bg-red-50 text-red-600 rounded text-center">
+          {error}
+          <div className="mt-2">
+            <a 
+              href={file.src} 
+              download={file.filename_download}
+              className="text-blue-600 underline"
+            >
+              يمكنك تنزيل الملف بدلاً من ذلك
+            </a>
+          </div>
+        </div>
+      )}
+      
+      {/* Document viewer based on file type and current viewer type */}
+      {extension === 'pdf' && !error && (
+        <div className="w-full h-[500px] border border-gray-300 rounded">
+          {viewerType === 'default' ? (
+            <iframe 
+              src={getPreviewUrl()} 
+              title={file.title || file.filename_download}
+              className="w-full h-full"
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+            ></iframe>
+          ) : viewerType === 'google' && (
+            <iframe 
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(file.src)}&embedded=true`} 
+              title={file.title || file.filename_download}
+              className="w-full h-full"
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+            ></iframe>
+          )}
+        </div>
+      )}
+      
+      {(extension === 'docx' || extension === 'doc') && !error && (
+        <div className="w-full h-[500px] border border-gray-300 rounded">
+          {viewerType === 'default' ? (
+            <iframe 
+              src={getPreviewUrl()} 
+              title={file.title || file.filename_download}
+              className="w-full h-full"
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+            ></iframe>
+          ) : viewerType === 'google' ? (
+            <iframe 
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(file.src)}&embedded=true`} 
+              title={file.title || file.filename_download}
+              className="w-full h-full"
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+            ></iframe>
+          ) : viewerType === 'office' && (
+            <iframe 
+              src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(file.src)}`} 
+              title={file.title || file.filename_download}
+              className="w-full h-full"
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+            ></iframe>
+          )}
+          
+          <div className="mt-2 p-2 bg-gray-100 rounded text-xs text-gray-600">
+            {viewerType !== 'default' ? (
+              <>
+                مشاهدة المستند باستخدام {viewerType === 'google' ? 'Google Docs' : 'Microsoft Office Online'}.{' '}
+                <button 
+                  onClick={() => {
+                    setViewerType(viewerType === 'google' ? 'office' : 'google');
+                    setIsLoading(true);
+                  }}
+                  className="text-blue-600 underline"
+                >
+                  تبديل إلى {viewerType === 'google' ? 'Microsoft Office Online' : 'Google Docs'}
+                </button>
+              </>
+            ) : (
+              <>
+                إذا واجهت مشكلة في عرض المستند، يمكنك{' '}
+                <button 
+                  onClick={() => {
+                    setViewerType('google');
+                    setIsLoading(true);
+                  }}
+                  className="text-blue-600 underline"
+                >
+                  عرضه في Google Docs
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {extension !== 'pdf' && extension !== 'docx' && extension !== 'doc' && !error && (
+        <div className="p-4 bg-gray-100 rounded text-center">
+          هذا النوع من الملفات لا يمكن عرضه مباشرة. يرجى تنزيل الملف لعرضه.
+        </div>
+      )}
+      
+      <div className="mt-4 flex justify-end">
+        <a 
+          href={file.src} 
+          download={file.filename_download}
+          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center"
+        >
+          <FaDownload className="mr-2" /> تنزيل الملف
+        </a>
+      </div>
     </div>
   );
 };

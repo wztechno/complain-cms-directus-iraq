@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchWithAuth } from '@/utils/api';
+import { fetchWithAuth, registerLogoutHandler } from '@/utils/api';
 
 interface UserInfo {
   id: string;
@@ -33,6 +33,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  // Register the logout handler when component mounts
+  useEffect(() => {
+    // Import the registerLogoutHandler function dynamically to avoid circular dependency
+    import('@/utils/api').then(({ registerLogoutHandler }) => {
+      registerLogoutHandler(logout);
+      console.log('Logout handler registered in AuthContext');
+    });
+  }, []);
 
   useEffect(() => {
     // Check for token and user info in localStorage on initial load

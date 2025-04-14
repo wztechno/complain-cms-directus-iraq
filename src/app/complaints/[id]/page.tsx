@@ -29,6 +29,14 @@ const getMediaUrl = (fileId: string, fileType: string): string => {
   
   const baseUrl = `https://complaint.top-wp.com/assets/${fileId}`;
   
+  // For document files (PDF, DOCX, DOC), don't add download=true
+  if (fileType.startsWith('application/pdf') || 
+      fileType.includes('word') || 
+      fileType.includes('pdf') ||
+      fileType.includes('document')) {
+    return `${baseUrl}?access_token=${token}`;
+  }
+  
   // For audio files, force download=true and ensure we have the correct auth token
   if (fileType.startsWith('audio/')) {
     // Handle m4a files specifically - they often have decoding issues
@@ -273,10 +281,54 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       
       // Handle any additional files (if present)
       if (data.files) {
+        console.log("Found files in complaint data:", data.files);
         const fileIds = Array.isArray(data.files) 
           ? data.files 
           : [data.files].filter(Boolean);
           
+        console.log("Processing file IDs:", fileIds);
+        
+        for (const fileId of fileIds) {
+          mediaPromises.push(
+            fetchWithAuth(`/files/${fileId}`)
+              .then(response => {
+                if (response && response.data) {
+                  const fileData = response.data;
+                  console.log("File data:", fileData);
+                  
+                  // Create the file object with the correct URL
+                  const regularFile: FileFile = {
+                    id: fileData.id,
+                    type: 'file',
+                    filename_download: fileData.filename_download,
+                    title: fileData.title || fileData.filename_download,
+                    filesize: parseInt(fileData.filesize || '0'),
+                    // Ensure the URL is correct and includes any necessary tokens
+                    src: getMediaUrl(fileData.id, fileData.type)
+                  };
+                  
+                  console.log("Created file object with src:", regularFile.src);
+                  files.push(regularFile);
+                } else {
+                  console.error("No data returned for file:", fileId);
+                }
+              })
+              .catch(err => console.error("Error fetching file:", fileId, err))
+          );
+        }
+      } else {
+        console.log("No files found in complaint data");
+      }
+      
+      // Also check for 'file' property in case the API is using a different name
+      if (data.file && !data.files) {
+        console.log("Found 'file' property in complaint data:", data.file);
+        const fileIds = Array.isArray(data.file) 
+          ? data.file 
+          : [data.file].filter(Boolean);
+          
+        console.log("Processing file IDs from 'file' property:", fileIds);
+        
         for (const fileId of fileIds) {
           mediaPromises.push(
             fetchWithAuth(`/files/${fileId}`)
@@ -348,23 +400,12 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
     try {
       setIsUpdating(true);
       
-      // Ensure completion_percentage is always a number
-      const formWithNumberPercentage = {
-        ...editForm,
-        completion_percentage: editForm.completion_percentage !== undefined ? 
-          Number(editForm.completion_percentage) : complaint?.completion_percentage
+      // Only include status_subcategory in the update data
+      const updateData = {
+        status_subcategory: editForm.status_subcategory
       };
       
-      // Prepare data for update - remove undefined values
-      const updateData = Object.fromEntries(
-        Object.entries(formWithNumberPercentage).filter(([_, value]) => value !== undefined)
-      );
-      
-      console.log('Updating complaint with data:', {
-        ...updateData,
-        completion_percentage: updateData.completion_percentage,
-        completion_percentage_type: typeof updateData.completion_percentage
-      });
+      console.log('Updating complaint with data:', updateData);
       
       // Send update request
       const response = await fetchWithAuth(`/items/Complaint/${complaint.id}`, {
@@ -377,14 +418,13 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         setIsEditing(false);
         
         // Show success message
-        alert('تم تحديث الشكوى بنجاح');
+        alert('تم تحديث حالة الشكوى بنجاح');
         
         // After the successful update, log what was returned
         if (response && response.data) {
           console.log('Update response data:', {
             id: response.data.id,
-            completion_percentage: response.data.completion_percentage,
-            completion_percentage_type: typeof response.data.completion_percentage
+            status_subcategory: response.data.status_subcategory
           });
         }
         
@@ -401,7 +441,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       }
     } catch (error) {
       console.error('Error updating complaint:', error);
-      alert('حدث خطأ أثناء تحديث الشكوى');
+      alert('حدث خطأ أثناء تحديث حالة الشكوى');
       setIsUpdating(false);
     }
   };
@@ -499,15 +539,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
                 handleSaveEdit();
               } else if (!isEditing) {
                 setEditForm({
-                  title: complaint?.title,
-                  description: complaint?.description,
-                  Service_type: complaint?.Service_type,
-                  governorate_name: complaint?.governorate_name,
-                  street_name_or_number: complaint?.street_name_or_number,
                   status_subcategory: complaint?.status_subcategory,
-                  Complaint_Subcategory: complaint?.Complaint_Subcategory,
-                  district: complaint?.district,
-                  completion_percentage: complaint?.completion_percentage !== undefined ? Number(complaint?.completion_percentage) : 0,
                 });
                 setIsEditing(true);
               }
@@ -515,7 +547,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             disabled={isUpdating}
             className={`bg-[#4664AD] text-white px-4 py-2 rounded-lg ${isUpdating ? 'opacity-70 cursor-not-allowed' : 'hover:bg-[#3a5499]'}`}
           >
-            {isUpdating ? 'جاري الحفظ...' : (isEditing ? 'حفظ التعديلات' : 'تعديل')}
+            {isUpdating ? 'جاري الحفظ...' : (isEditing ? 'حفظ تغيير الحالة' : 'تغيير الحالة')}
           </button>
         </div>
       </div>
@@ -527,86 +559,54 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 عنوان الشكوى
               </label>
-              <input 
-                type="text"
-                value={editForm.title || ''}
-                onChange={(e) => setEditForm({...editForm, title: e.target.value})}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-              />
+              <div className="w-full bg-gray-100 p-2 rounded text-right">
+                {complaint?.title || '—'}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 نوع الخدمة
               </label>
-              <input 
-                type="text"
-                value={editForm.Service_type || ''}
-                onChange={(e) => setEditForm({...editForm, Service_type: e.target.value})}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-              />
+              <div className="w-full bg-gray-100 p-2 rounded text-right">
+                {complaint?.Service_type || '—'}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 المحافظة
               </label>
-              <select
-                value={editForm.district || ''}
-                onChange={(e) => setEditForm({...editForm, district: Number(e.target.value)})}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-              >
-                <option value="">اختر المحافظة</option>
-                {Object.entries(districts).map(([id, name]) => (
-                  <option key={id} value={id}>{name}</option>
-                ))}
-              </select>
+              <div className="w-full bg-gray-100 p-2 rounded text-right">
+                {districts[complaint?.district || 0] || '—'}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 القضاء
               </label>
-              <input 
-                type="text"
-                value={editForm.governorate_name || ''}
-                onChange={(e) => setEditForm({...editForm, governorate_name: e.target.value})}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-              />
+              <div className="w-full bg-gray-100 p-2 rounded text-right">
+                {complaint?.governorate_name || '—'}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 رقم أو اسم الشارع
               </label>
-              <input 
-                type="text"
-                value={editForm.street_name_or_number || ''}
-                onChange={(e) => setEditForm({...editForm, street_name_or_number: e.target.value})}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-              />
+              <div className="w-full bg-gray-100 p-2 rounded text-right">
+                {complaint?.street_name_or_number || '—'}
+              </div>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 الفئة الفرعية للشكوى
               </label>
-              <select
-                value={editForm.Complaint_Subcategory || ''}
-                onChange={(e) => setEditForm({...editForm, Complaint_Subcategory: Number(e.target.value)})}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-              >
-                <option value="">اختر الفئة</option>
-                {Object.keys(complaintSubcategories).length > 0 ? (
-                  Object.entries(complaintSubcategories).map(([id, name]) => (
-                    <option key={id} value={id}>{name}</option>
-                  ))
-                ) : (
-                  <option value={complaint?.Complaint_Subcategory || ''} disabled>
-                    {complaint?.Complaint_Subcategory ? 'تعذر تحميل البيانات' : 'لا توجد فئات'}
-                  </option>
-                )}
-              </select>
+              <div className="w-full bg-gray-100 p-2 rounded text-right">
+                {complaintSubcategories[complaint?.Complaint_Subcategory || 0] || '—'}
+              </div>
             </div>
             
             <div>
@@ -629,32 +629,18 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 نسبة الإنجاز
               </label>
-              <input 
-                type="number"
-                min="0"
-                max="100"
-                value={editForm.completion_percentage !== undefined ? editForm.completion_percentage : 0}
-                onChange={(e) => {
-                  // Ensure we're passing a number to the state
-                  const numValue = e.target.value === '' ? 0 : Number(e.target.value);
-                  // Log both the original value and converted value for debugging
-                  console.log('Percentage input value:', e.target.value, 'Converted to:', numValue, 'Type:', typeof numValue);
-                  setEditForm({...editForm, completion_percentage: numValue});
-                }}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-              />
+              <div className="w-full bg-gray-100 p-2 rounded text-right">
+                {`${complaint?.completion_percentage || 0}%`}
+              </div>
             </div>
             
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 وصف الشكوى
               </label>
-              <textarea 
-                value={editForm.description || ''}
-                onChange={(e) => setEditForm({...editForm, description: e.target.value})}
-                className="w-full border border-gray-300 p-2 rounded text-right"
-                rows={4}
-              />
+              <div className="w-full bg-gray-100 p-2 rounded text-right min-h-[6rem]">
+                {complaint?.description || '—'}
+              </div>
             </div>
           </div>
           

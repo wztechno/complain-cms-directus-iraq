@@ -1,5 +1,34 @@
 const BASE_URL = 'https://complaint.top-wp.com';
 
+// Add a global function to handle token expiration
+let logoutCallback: (() => void) | null = null;
+
+// Function to register the logout handler from AuthContext
+export function registerLogoutHandler(callback: () => void) {
+  logoutCallback = callback;
+  console.log('Logout handler registered');
+}
+
+// Function to handle token expiration
+function handleTokenExpiration() {
+  console.log('Token expired, logging out automatically');
+  
+  // Clean up localStorage
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('user_info');
+  localStorage.removeItem('current_user_id');
+  localStorage.removeItem('reload_once');
+  
+  // Call the logout function if it's registered
+  if (logoutCallback) {
+    logoutCallback();
+  } else {
+    console.warn('No logout handler registered, redirecting to login page');
+    // Fallback: redirect to login page
+    window.location.href = '/login';
+  }
+}
+
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token');
   
@@ -384,6 +413,10 @@ if (endpoint.startsWith('/policies')) {
           const error = new Error('Authentication token expired or invalid');
           (error as any).status = 401;
           (error as any).details = errorData;
+          
+          // Call the automatic logout function
+          handleTokenExpiration();
+          
           throw error;
         } else {
           console.error(`API error for ${endpoint}: ${response.status} ${response.statusText}`);
@@ -525,6 +558,12 @@ if (endpoint.startsWith('/policies')) {
     if ((response.status === 401 || response.status === 403) && !endpoint.startsWith('/api/')) {
       // Authentication failed - token might be expired
       console.error(`Authentication error (${response.status}): Token may be expired or invalid`);
+      
+      // For 401 errors, trigger automatic logout
+      if (response.status === 401) {
+        handleTokenExpiration();
+      }
+      
       throw new Error(`Authentication failed - Status: ${response.status}`);
     }
 

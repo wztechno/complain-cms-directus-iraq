@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight } from 'react-icons/fa';
+import { fetchWithAuth } from '@/utils/api';
 
 interface District {
   id: number;
@@ -36,16 +37,16 @@ export default function GovernorateDetailsPage({ params }: { params: { id: strin
       const data = await res.json();
       const governorateData: Governorate = data.data;
 
-    //   // Fetch districts for this governorate
-    //   try {
-    //     const districtsRes = await fetch(`https://complaint.top-wp.com/items/District?filter[governorate][_eq]=${params.id}`);
-    //     if (districtsRes.ok) {
-    //       const districtsData = await districtsRes.json();
-    //       governorateData.districts = districtsData.data;
-    //     }
-    //   } catch (error) {
-    //     console.error('Error fetching districts:', error);
-    //   }
+      // Fetch districts for this governorate
+      try {
+        const districtsRes = await fetchWithAuth(`/items/Governorate?filter[district][_eq]=${params.id}`);
+        if (districtsRes.data) {
+          const districtsData = await districtsRes.data;
+          governorateData.districts = districtsData;
+        }
+      } catch (error) {
+        console.error('Error fetching districts:', error);
+      }
 
       setGovernorate(governorateData);
       setLoading(false);
@@ -134,14 +135,14 @@ export default function GovernorateDetailsPage({ params }: { params: { id: strin
           </div>
         </div>
 
-        <div className="mt-8 flex justify-end">
+        {/* <div className="mt-8 flex justify-end">
           <button
             onClick={() => router.push(`/complaints?governorate=${governorate.name}`)}
             className="bg-[#4664AD] text-white px-6 py-2 rounded-lg hover:bg-[#3A5499]"
           >
             عرض الشكاوى المرتبطة
           </button>
-        </div>
+        </div> */}
       </div>
     </div>
   );

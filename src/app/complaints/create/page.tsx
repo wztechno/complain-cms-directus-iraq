@@ -8,11 +8,14 @@ import { getUserPermissions, hasPermission } from '@/utils/permissions';
 export default function CreateComplaintPage() {
   const router = useRouter();
   const [governorates, setGovernorates] = useState<{ id: number, name: string }[]>([]);
+  const [allGovernorates, setAllGovernorates] = useState<{ id: number, name: string }[]>([]);
+  const [districts, setDistricts] = useState<{id: number, name: string}[]>([]);
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [statusSubcategories, setStatusSubcategories] = useState<{ id: number, name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [loadingGovernorates, setLoadingGovernorates] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -20,6 +23,7 @@ export default function CreateComplaintPage() {
     Service_type: '',
     district: '',
     status_subcategory: '',
+    governorate_name: '',
     completion_percentage: 0,
   });
 
@@ -33,15 +37,20 @@ export default function CreateComplaintPage() {
           return;
         }
 
-        const [govRes, complaintRes, statusRes] = await Promise.all([
-          fetchWithAuth('/items/District'),
+        const [distRes, complaintRes, statusRes, govRes] = await Promise.all([
+          fetchWithAuth('/items/District?filter[active]=true'),
           fetchWithAuth('/items/Complaint'),
           fetchWithAuth('/items/Status_subcategory'),
+          fetchWithAuth('/items/Governorate'),
         ]);
 
+        if (distRes?.data) {
+          setDistricts(distRes?.data);
+        }
+
         if (govRes?.data) {
-          // const uniqueGovs = govRes.data.map((item: any) => item.name).filter(Boolean);
-          setGovernorates(govRes?.data);
+          // Store all governorates for filtering later
+          setAllGovernorates(govRes?.data);
         }
 
         if (complaintRes?.data) {
@@ -65,14 +74,62 @@ export default function CreateComplaintPage() {
     checkPermissionsAndFetchData();
   }, []);
 
+  // Filter governorates when district selection changes
+  useEffect(() => {
+    const filterGovernorates = async () => {
+      if (!formData.district) {
+        setGovernorates([]);
+        return;
+      }
+
+      try {
+        setLoadingGovernorates(true);
+        
+        // Get the filtered governorates based on the selected district
+        const response = await fetchWithAuth(`/items/Governorate?filter[district][_eq]=${formData.district}`);
+        
+        if (response?.data) {
+          setGovernorates(response.data);
+          
+          // If only one governorate is available, auto-select it
+          if (response.data.length === 1) {
+            setFormData(prev => ({
+              ...prev,
+              governorate_name: response.data[0].name // Use the name instead of ID
+            }));
+          }
+        } else {
+          setGovernorates([]);
+        }
+      } catch (error) {
+        console.error('Error filtering governorates by district:', error);
+        setGovernorates([]);
+      } finally {
+        setLoadingGovernorates(false);
+      }
+    };
+
+    filterGovernorates();
+  }, [formData.district]);
+
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    
+    // Clear governorate selection when district changes
+    if (name === 'district') {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+        governorate_name: '' // Reset the governorate when district changes
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -191,7 +248,7 @@ export default function CreateComplaintPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 text-right mb-1">
-                  المحافظة *
+                  القضاء *
                 </label>
                 <select
                   name="district"
@@ -200,15 +257,40 @@ export default function CreateComplaintPage() {
                   required
                   className="w-full border border-gray-300 rounded-md p-2 text-right"
                 >
-                  <option value="">اختر المحافظة</option>
-                  {governorates.map((gov) => (
-                    <option key={gov.id} value={gov.id}>{gov.name}</option>
+                  <option value="">اختر القضاء</option>
+                  {districts.map((dis) => (
+                    <option key={dis.id} value={dis.id}>{dis.name}</option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* ✅ New: Status Subcategory */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                المحافظة *
+              </label>
+              <select
+                name="governorate_name"
+                value={formData.governorate_name}
+                onChange={handleInputChange}
+                required
+                disabled={!formData.district || loadingGovernorates}
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              >
+                <option value="">
+                  {loadingGovernorates 
+                    ? 'جاري تحميل المحافظات...' 
+                    : !formData.district 
+                      ? 'اختر القضاء أولاً' 
+                      : 'اختر المحافظة'}
+                </option>
+                {governorates.map((gov) => (
+                  <option key={gov.id} value={gov.name}>{gov.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Subcategory */}
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 التصنيف الفرعي للحالة

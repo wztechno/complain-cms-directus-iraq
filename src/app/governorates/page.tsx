@@ -21,7 +21,7 @@ export default function GovernoratesPage() {
 
   const fetchDistricts = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/District');
+      const res = await fetch('https://complaint.top-wp.com/items/District?filter[active]=true');
       if (!res.ok) {
         throw new Error('Failed to fetch districts');
       }

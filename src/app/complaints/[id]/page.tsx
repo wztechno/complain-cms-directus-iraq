@@ -125,6 +125,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
   const [subcategories, setSubcategories] = useState<Record<number, string>>({});
   const [complaintSubcategories, setComplaintSubcategories] = useState<Record<number, string>>({});
   const [statusSubcategories, setStatusSubcategories] = useState<Record<number, string>>({});
+  const [usedStatusSubcategories, setUsedStatusSubcategories] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -148,28 +149,33 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         return;
       }
 
-      const [complaintRes, districtsRes, subcategoriesRes, complaintSubcategoriesRes] = await Promise.all([
-        fetchWithAuth(`/items/Complaint/${params.id}`),
-        fetchWithAuth('/items/District'),
-        fetchWithAuth('/items/Status_subcategory'),
-        fetch('https://complaint.top-wp.com/items/Complaint_sub_category'),
-      ]);
-
-      const complaintSubcategoriesData = await complaintSubcategoriesRes?.json();
+      // First fetch the complaint data
+      const complaintRes = await fetchWithAuth(`/items/Complaint/${params.id}`);
+      
       if (!complaintRes?.data) {
         setError('لم يتم العثور على الشكوى');
         setLoading(false);
         return;
       }
 
-      const data = complaintRes.data;
-
-      if (!complaintMatchesPermissions(data, userPermissions)) {
+      if (!complaintMatchesPermissions(complaintRes.data, userPermissions)) {
         setError('ليس لديك صلاحية لعرض هذه الشكوى');
         setLoading(false);
         return;
       }
 
+      // Now fetch other data using the complaint data
+      const [districtsRes, subcategoriesRes, complaintSubcategoriesRes, timelineRes] = await Promise.all([
+        fetchWithAuth('/items/District'),
+        fetchWithAuth(`/items/Status_subcategory?filter[complaint_subcategory][_eq]=${complaintRes.data.Complaint_Subcategory}&filter[district][_eq]=${complaintRes.data.district}`),
+        fetch('https://complaint.top-wp.com/items/Complaint_sub_category'),
+        fetchWithAuth(`/items/ComplaintTimeline?filter[complaint_id][_eq]=${complaintRes.data.id}`),
+      ]);
+
+      const complaintSubcategoriesData = await complaintSubcategoriesRes?.json();
+      const data = complaintRes.data;
+
+      console.log("data: ", subcategoriesRes);
       // Process media files (if they exist)
       const images: ImageFile[] = [];
       const videos: VideoFile[] = [];
@@ -387,6 +393,14 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
           completion_percentage_type: typeof complaintRes.data.completion_percentage
         });
       }
+
+      // Extract used status subcategories from timeline
+      const usedStatuses = timelineRes?.data?.map((item: any) => item.status_subcategory) || [];
+      // Include current status in the used list
+      if (data.status_subcategory && !usedStatuses.includes(data.status_subcategory)) {
+        usedStatuses.push(data.status_subcategory);
+      }
+      setUsedStatusSubcategories(usedStatuses);
     } catch (err) {
       console.error('Error:', err);
       setError('حدث خطأ أثناء تحميل الشكوى');
@@ -400,9 +414,10 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
     try {
       setIsUpdating(true);
       
-      // Only include status_subcategory in the update data
+      // Include both status_subcategory and completion_percentage in the update data
       const updateData = {
-        status_subcategory: editForm.status_subcategory
+        status_subcategory: editForm.status_subcategory,
+        completion_percentage: editForm.completion_percentage
       };
       
       console.log('Updating complaint with data:', updateData);
@@ -540,6 +555,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
               } else if (!isEditing) {
                 setEditForm({
                   status_subcategory: complaint?.status_subcategory,
+                  completion_percentage: complaint?.completion_percentage || 0,
                 });
                 setIsEditing(true);
               }
@@ -619,9 +635,19 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
                 className="w-full border border-gray-300 p-2 rounded text-right"
               >
                 <option value="">اختر الحالة</option>
-                {Object.entries(statusSubcategories).map(([id, name]) => (
-                  <option key={id} value={id}>{name}</option>
-                ))}
+                {Object.entries(statusSubcategories).map(([id, name]) => {
+                  const isDisabled = usedStatusSubcategories.includes(Number(id));
+                  return (
+                    <option 
+                      key={id} 
+                      value={id}
+                      disabled={isDisabled}
+                      className={isDisabled ? 'text-gray-400' : ''}
+                    >
+                      {name} {isDisabled ? '(تم استخدامها)' : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             
@@ -629,8 +655,16 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 نسبة الإنجاز
               </label>
-              <div className="w-full bg-gray-100 p-2 rounded text-right">
-                {`${complaint?.completion_percentage || 0}%`}
+              <div className="w-full flex items-center">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={editForm.completion_percentage || 0}
+                  onChange={(e) => setEditForm({...editForm, completion_percentage: Number(e.target.value)})}
+                  className="w-full border border-gray-300 p-2 rounded text-right"
+                />
+                <span className="mr-2">%</span>
               </div>
             </div>
             
@@ -666,6 +700,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             <Field label="الفئة الفرعية للشكوى" value={complaintSubcategories[complaint?.Complaint_Subcategory || 0] || null} />
             <Field label="الفئة الفرعية للحالة" value={statusSubcategories[complaint?.status_subcategory || 0] || null} />
             <Field label="نسبة الإنجاز" value={`${complaint?.completion_percentage || 0}%`} />
+            <Field label="وصف الشكوى" value={`${complaint?.description || 0}`} />
           </div>
         </div>
       )}

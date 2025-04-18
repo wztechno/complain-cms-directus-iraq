@@ -10,8 +10,13 @@ interface StatusSubCategory {
   name: string;
   status_category: StatusCategory | null;
   district: District | null;
-  complaint_subcategory: number | null;
+  complaint_subcategory: ComplaintSubCategory | null;
   nextstatus: StatusSubCategory | null;
+}
+
+interface ComplaintSubCategory {
+  id: number;
+  name: string;
 }
 
 interface District {
@@ -36,11 +41,13 @@ export default function StatusSubCategoryPage() {
   const [showAddSubCategory, setShowAddSubCategory] = useState(false);
   const [districts, setDistricts] = useState<District[]>([]);
   const [statusCategories, setStatusCategories] = useState<StatusCategory[]>([]);
+  const [complaintSubCategories, setComplaintSubCategories] = useState<ComplaintSubCategory[]>([]);
   const [newSubCategory, setNewSubCategory] = useState({
     name: '',
     status_category: '',
     district: '',
     nextstatus: '',
+    complaint_subcategory: '',
   });
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
@@ -112,11 +119,12 @@ export default function StatusSubCategoryPage() {
   
       if (userPermissions.isAdmin) {
         // Admin: Fetch all subcategories
-        res = await fetchWithAuth(`/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*`);
+        res = await fetchWithAuth(`/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(true);
+        console.log("res", res);
       } else {
         // Non-admin: Filter by district
-        res = await fetchWithAuth(`/items/Status_subcategory?filter[district][_eq]=${district_id}&fields=*,district.*,status_category.*,nextstatus.*`);
+        res = await fetchWithAuth(`/items/Status_subcategory?filter[district][_eq]=${district_id}&fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(false);
       }
   
@@ -129,6 +137,10 @@ export default function StatusSubCategoryPage() {
       } else {
         throw new Error('Failed to fetch subcategories');
       }
+
+      const complaintSubCategories = await fetchWithAuth('/items/Complaint_sub_category');
+      setComplaintSubCategories(complaintSubCategories.data);
+      console.log("complaintSubCategories", complaintSubCategories.data);
   
       setLoading(false);
     } catch (error) {
@@ -266,7 +278,8 @@ export default function StatusSubCategoryPage() {
         ...csvData.map(row => headers.map(header => row[header as keyof typeof row]).join(','))
       ].join('\n');
 
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'status_subcategories.csv';
@@ -296,6 +309,7 @@ export default function StatusSubCategoryPage() {
           status_category: newSubCategory.status_category ? Number(newSubCategory.status_category) : null,
           district: newSubCategory.district ? Number(newSubCategory.district) : null,
           nextstatus: newSubCategory.nextstatus ? Number(newSubCategory.nextstatus) : null,
+          complaint_subcategory: newSubCategory.complaint_subcategory ? Number(newSubCategory.complaint_subcategory) : null,
         })
       });
 
@@ -304,7 +318,7 @@ export default function StatusSubCategoryPage() {
       }
 
       setShowAddSubCategory(false);
-      setNewSubCategory({ name: '', status_category: '', district: '', nextstatus: '' });
+      setNewSubCategory({ name: '', status_category: '', district: '', nextstatus: '', complaint_subcategory: '' });
       fetchSubCategories();
     } catch (error) {
       console.error('Error adding sub-category:', error);
@@ -371,14 +385,14 @@ export default function StatusSubCategoryPage() {
             <h3 className="text-xl font-semibold text-right mb-4">{subCategory.name}</h3>
 
             <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-              <span>{subCategory.nextstatus?.name}</span>
+              <span>{subCategory.complaint_subcategory?.name}</span>
               <span>{subCategory.district?.name}</span>
             </div>
 
             <div className="border-t pt-4 mt-2">
               <div className="text-right text-sm text-gray-600">
                 <span className="font-semibold ml-2">الحالة التالية:</span>
-                <span>{subCategory.nextStatusDetails?.name || 'ابلاغ المواطن بضرورة الترخيص'}</span>
+                <span>{subCategory.nextstatus?.name || 'ابلاغ المواطن بضرورة الترخيص'}</span>
               </div>
             </div>
           </div>
@@ -454,6 +468,24 @@ export default function StatusSubCategoryPage() {
                   )}
                 </select>
                 {/* <p className='text-gray-500 rounded-lg p-2 w-full border border-gray-300'>{subCategories[0].district.name}</p> */}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                   الفئة الفرعية للشكوى
+                </label>
+                <select
+                  value={newSubCategory.complaint_subcategory}
+                  onChange={(e) => setNewSubCategory({ ...newSubCategory, complaint_subcategory: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg p-2"
+                >
+                  <option value="">اختر الفئة الرئيسية</option>
+                  {complaintSubCategories.map((subCategory) => (
+                    <option key={subCategory.id} value={subCategory.id}>  
+                      {subCategory.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

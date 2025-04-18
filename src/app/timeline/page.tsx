@@ -42,7 +42,7 @@ export default function TimelinePage() {
       const [timelineRes, complaintsRes, usersRes, statusRes] = await Promise.all([
         fetchWithAuth('/items/ComplaintTimeline'),
         fetchWithAuth('/items/Complaint'),
-        fetchWithAuth('/users'),
+        fetchWithAuth('/items/Users'),
         fetchWithAuth('/items/Status_subcategory')
       ]);
     

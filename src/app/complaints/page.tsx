@@ -75,7 +75,7 @@ export default function ComplaintsPage() {
         // Log the first few districts to see their structure
         console.log("Districts data sample:", districtsData.data.slice(0, 3));
         console.log("Districts data types:", 
-          districtsData.data.slice(0, 3).map((d: any) => ({
+          districtsData.data.map((d: any) => ({
             id: d.id, 
             idType: typeof d.id,
             name: d.name

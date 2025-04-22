@@ -134,7 +134,7 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
       const policyIds: string[] = [];
       for (const userPolicy of userPoliciesResponse.data) {
         if (userPolicy.policy) {
-          const policyId = typeof userPolicy.policy === 'object' ? userPolicy.policy.id : userPolicy.policy;
+          const policyId = typeof userPolicy.policy === 'object' ? userPolicy.policy_id : userPolicy.policy_id;
           if (policyId && !policyIds.includes(policyId)) {
             policyIds.push(String(policyId));
           }

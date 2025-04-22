@@ -58,47 +58,75 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
           console.log('Fetching user policies to determine permissions...');
           const policyRes = await fetch(`${BASE_URL}/items/user_policies`, { headers });
           const policyJson = await policyRes.json();
+          console.log('Raw user policies data:', policyJson);
       
-          // Fetch user info to check if admin
-          const policyAdmin = await fetch(`${BASE_URL}/users/me`, { headers });
-          const policyAdminJson = await policyAdmin.json();
-          console.log(`Policy admin:`, policyAdminJson);
+          // Get user info from localStorage instead of making an API call
+          const userInfoStr = localStorage.getItem('user_info');
+          let policyAdminJson = { data: null };
+          let currentUserId = '';
+          
+          if (userInfoStr) {
+            try {
+              const userData = JSON.parse(userInfoStr);
+              policyAdminJson = { data: userData };
+              currentUserId = userData.id;
+              console.log(`User info from localStorage:`, policyAdminJson);
+              console.log(`Current user ID: ${currentUserId}`);
+            } catch (parseError) {
+              console.error('Error parsing user info from localStorage:', parseError);
+              // Fallback to API call if localStorage data is invalid
+              const policyAdmin = await fetch(`${BASE_URL}/users/me`, { headers });
+              policyAdminJson = await policyAdmin.json();
+              currentUserId = policyAdminJson.data?.id;
+              console.log(`Fallback to API - Policy admin:`, policyAdminJson);
+            }
+          } else {
+            // Fallback to API call if localStorage doesn't have the data
+            const policyAdmin = await fetch(`${BASE_URL}/users/me`, { headers });
+            policyAdminJson = await policyAdmin.json();
+            currentUserId = policyAdminJson.data?.id;
+            console.log(`Fallback to API - Policy admin:`, policyAdminJson);
+          }
+          
           const isAdmin = policyAdminJson.data?.role === '8A8C7803-08E5-4430-9C56-B2F20986FA56';
           
-          // Get user policy
-          const userPolicy = policyJson.data?.[0];
-          const policyId = userPolicy?.policy_id?.id || userPolicy?.policy_id;
+          // Find user policy that matches current user ID
+          console.log('Looking for policies matching user ID:', currentUserId);
+          const userPolicies = policyJson.data || [];
+          console.log('All available policies:', userPolicies);
           
-          // Check for policy ID from user's direct policies if no user_policy found
-          let userPoliciesFromUserData = [];
-          if (!policyId && policyAdminJson.data?.policies) {
-            userPoliciesFromUserData = Array.isArray(policyAdminJson.data.policies) 
-              ? policyAdminJson.data.policies 
-              : [policyAdminJson.data.policies];
-            console.log('Found policies in user data:', userPoliciesFromUserData);
+          // Find the correct policy for this user
+          let matchingUserPolicy = null;
+          let policyId = null;
+          
+          for (const policy of userPolicies) {
+            console.log('Examining policy:', policy);
+            
+            // Handle the case where user_id might be an array
+            const policyUserId = Array.isArray(policy.user_id) ? policy.user_id[0] : policy.user_id;
+            console.log(`Policy user ID (${typeof policyUserId}):`, policyUserId);
+            console.log(`Current user ID (${typeof currentUserId}):`, currentUserId);
+            
+            if (policyUserId === currentUserId) {
+              matchingUserPolicy = policy;
+              // Handle policy_id as either a string or an array
+              policyId = Array.isArray(policy.policy_id) ? policy.policy_id[0] : policy.policy_id;
+              console.log('MATCH FOUND! Using policy:', matchingUserPolicy);
+              console.log('Policy ID extracted:', policyId);
+              break;
+            }
+          }
+          
+          // If no matching policy was found, try to use the first one (backward compatibility)
+          if (!matchingUserPolicy && userPolicies.length > 0) {
+            console.warn('No policy exactly matching current user. Using first available policy as fallback.');
+            matchingUserPolicy = userPolicies[0];
+            policyId = Array.isArray(matchingUserPolicy.policy_id) 
+              ? matchingUserPolicy.policy_id[0] 
+              : matchingUserPolicy.policy_id;
           }
 
-          // For admin users, or if there are policies in user data, proceed without requiring user_policies
-          if (!policyId && !isAdmin && userPoliciesFromUserData.length === 0) {
-            console.warn('No policy_id found for user - using default permissions');
-            // Instead of throwing, try to fetch all complaints with no filters
-            const directEndpoint = `${BASE_URL}/items/Complaint`;
-            console.log(`Falling back to unfiltered complaints endpoint: ${directEndpoint}`);
-            
-            const complaintResponse = await fetch(directEndpoint, {
-              ...options,
-              headers,
-            });
-            
-            if (!complaintResponse.ok) {
-              console.error(`Error fetching unfiltered complaints: ${complaintResponse.status}`);
-              throw new Error(`API call failed: ${complaintResponse.status} ${complaintResponse.statusText}`);
-            }
-            
-            return await complaintResponse.json();
-          }
-          
-          console.log(`Using policy ID: ${policyId || 'Admin user - no specific policy needed'}`);
+          console.log(`Final policy being used: ${policyId || 'Admin user - no specific policy needed'}`);
       
           // For admin users, skip the permission check and fetch all complaints
           if (isAdmin) {
@@ -328,7 +356,7 @@ if (endpoint.startsWith('/policies')) {
       console.log('Request headers:', { ...headers, Authorization: 'Bearer ***' }); // Hide token
       
       // For PATCH/PUT/DELETE requests, first verify the token by making a simple request
-      if (options.method === 'PATCH' || options.method === 'PUT' || options.method === 'DELETE') {
+      if (options.method === 'PATCH') {
         try {
           console.log('Verifying token validity before policy modification...');
           const verifyResponse = await fetch(`${BASE_URL}/users/me`, {

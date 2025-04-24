@@ -16,6 +16,15 @@ interface District {
   name: string;
 }
 
+// interface Status_subcategory {
+//   id: number;
+//   name: string;
+//   status_category: {
+//     id: number;
+//     name: string;
+//   }
+// }
+
 // Add interface for Complaint with district relationship
 interface Complaint {
   id: string;
@@ -25,9 +34,10 @@ interface Complaint {
   district: number | null;
   districtName?: string; // This will store the district name after joining
   status_subcategory: string | number;
-  completion_percentage: number;
+  completion_percentage: string | number;
   date?: string;
   statusDate?: string;
+  status?: string;
   // Add other fields as needed
 }
 
@@ -38,18 +48,21 @@ export default function ComplaintsPage() {
   const [districts, setDistricts] = useState<District[]>([]);
   const [selectedComplaints, setSelectedComplaints] = useState<string[]>([]);
   const [showExportOptions, setShowExportOptions] = useState(false);
-  const [serviceTypes, setServiceTypes] = useState<string[]>([]);
+  const [status, setStatus] = useState<string[]>([]);
+  const [completionPercentage, setCompletionPercentage] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const complaintsPerPage = 10;
   const [complaintNames, setComplaintNames] = useState<string[]>([]); // Add this line
-
+  const [isUserAdmin , setIsUserAdmin] = useState(false);
   const [filters, setFilters] = useState({
     governorate: '',
     title: '',
     startDate: '',
     endDate: '',
-    serviceType: ''
+    serviceType: '',
+    status:'',
+    compelation_percentage:''
   });
 
   useEffect(() => {
@@ -75,7 +88,7 @@ export default function ComplaintsPage() {
         // Log the first few districts to see their structure
         console.log("Districts data sample:", districtsData.data.slice(0, 3));
         console.log("Districts data types:", 
-          districtsData.data.map((d: any) => ({
+          districtsData.data.slice(0).map((d: any) => ({
             id: d.id, 
             idType: typeof d.id,
             name: d.name
@@ -102,7 +115,11 @@ export default function ComplaintsPage() {
       const userPermissions = await getUserPermissions();
       const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
       const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
-      const isAdmin = userInfo?.role?.id === ADMIN_ROLE_ID;
+      const isAdmin = userInfo?.role === ADMIN_ROLE_ID;
+
+      setIsUserAdmin(isAdmin); 
+      console.log("isUserAdmin: ", isUserAdmin)
+      console.log("isAdmin: ", isAdmin)
 
       let url = '/items/Complaint';
       
@@ -127,7 +144,7 @@ export default function ComplaintsPage() {
           url += `?filter[_or]=[${filters.join(',')}]`;
         }
       }
-
+    
       console.log('Fetching complaints with URL:', url);
       const response = await fetchWithAuth(url);
 
@@ -312,13 +329,48 @@ export default function ComplaintsPage() {
       setComplaints(sortedComplaints);
       setFilteredComplaints(sortedComplaints);
 
-      // Extract unique service types for filter dropdown
-      const uniqueServiceTypes = Array.from(
-        new Set(processedComplaints.map((c: Complaint) => c.Service_type || '').filter(Boolean))
+      // Extract unique Status for filter dropdown
+      const uniqueStatus = Array.from(
+        new Set(processedComplaints.map((c: Complaint) => c.status || '').filter(Boolean))
       ) as string[];
-      setServiceTypes(uniqueServiceTypes);
-      console.log(`Found ${uniqueServiceTypes.length} unique service types`);
+      setStatus(uniqueStatus);
+      console.log(`Found ${uniqueStatus.length} unique Status types`);
 
+      // Extract unique Percentation for filter dropdown
+      const uniquePercentation = Array.from(
+        new Set(processedComplaints.map((c: Complaint) => c.completion_percentage || '').filter(Boolean))
+      ) as string[];
+      
+      // Sort completion percentages numerically
+      uniquePercentation.sort((a, b) => {
+        const numA = parseFloat(String(a));
+        const numB = parseFloat(String(b));
+        return numA - numB;
+      });
+      
+      setCompletionPercentage(uniquePercentation);
+      console.log(`Found ${uniquePercentation.length} unique Percentage values:`, uniquePercentation);
+
+      const status_subcategories = await fetch('https://complaint.top-wp.com/items/Status_subcategory?fields=*,status_category.*');
+      const res = await status_subcategories.json(); // <-- Await the JSON parsing
+      
+      const enrichedComplaints = sortedComplaints.map((complaint: any) => {
+        const matched = res.data.find(
+          (item: any) => item.id === complaint.status_subcategory
+        );
+      
+        return {
+          ...complaint,
+          mainCategory: matched?.status_category?.name || null,
+        };
+      });
+      
+      setComplaints(enrichedComplaints);
+      setFilteredComplaints(enrichedComplaints);
+      console.log("Enriched and final complaints:", enrichedComplaints);
+      
+      
+      
       setLoading(false);
     } catch (error) {
       console.error('Error fetching complaints:', error);
@@ -350,9 +402,15 @@ export default function ComplaintsPage() {
       }
 
       if (filters.serviceType) {
-        filtered = filtered.filter(complaint => 
-          complaint.Service_type === filters.serviceType
-        );
+        filtered = filtered.filter(complaint => {
+          // Match the complaint's Service_type against our two categories
+          if (filters.serviceType === 'خدمات فردية') {
+            return complaint.Service_type === 'خدمات فردية' || complaint.Service_type === 'individual';
+          } else if (filters.serviceType === 'خدمات عامة') {
+            return complaint.Service_type === 'خدمات عامة' || complaint.Service_type === 'public';
+          }
+          return complaint.Service_type === filters.serviceType;
+        });
         console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
       }
 
@@ -372,6 +430,23 @@ export default function ComplaintsPage() {
           }
         });
         console.log(`After start date filter (${filters.startDate}): ${filtered.length} complaints`);
+      }
+
+      if (filters.status) {
+        filtered = filtered.filter(complaint => 
+          complaint.status === filters.status
+        );
+        // console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
+      }
+
+      if (filters.compelation_percentage) {
+        filtered = filtered.filter(complaint => {
+          // Convert both values to strings for comparison to handle mixed types
+          const filterValue = String(filters.compelation_percentage);
+          const complaintValue = String(complaint.completion_percentage);
+          return complaintValue === filterValue;
+        });
+        console.log(`After completion percentage filter (${filters.compelation_percentage}): ${filtered.length} complaints remaining. Filter type: ${typeof filters.compelation_percentage}, Sample complaint value type: ${typeof filtered[0]?.completion_percentage}`);
       }
 
       if (filters.endDate) {
@@ -609,21 +684,55 @@ export default function ComplaintsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 text-right mb-1">
-                  المحافظة
+                الشكوى
                 </label>
                 <select
-                  value={filters.governorate}
-                  onChange={(e) => {
-                    setFilters({ ...filters, governorate: e.target.value });
-                  }}
+                  value={filters.status}
+                  onChange={(e) => setFilters({ ...filters, status: e.target.value })}
                   className="w-full border border-gray-300 rounded-md p-2 text-right"
                 >
                   <option value="">الكل</option>
-                  {districts.map((district) => (
-                    <option key={district.id} value={district.name}>{district.name}</option>
+                  {status.map(status => (
+                    <option key={status} value={status}>{status || 'بدون عنوان'}</option>
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                نسبة الإنجاز
+                </label>
+                <select
+                  value={filters.compelation_percentage}
+                  onChange={(e) => setFilters({ ...filters, compelation_percentage: e.target.value })}
+                  className="w-full border border-gray-300 rounded-md p-2 text-right"
+                >
+                  <option value="">الكل</option>
+                  {completionPercentage.map(percent => (
+                    <option key={percent} value={percent}>
+                      {percent}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {isUserAdmin &&
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                    المحافظة
+                  </label>
+                  <select
+                    value={filters.governorate}
+                    onChange={(e) => {
+                      setFilters({ ...filters, governorate: e.target.value });
+                    }}
+                    className="w-full border border-gray-300 rounded-md p-2 text-right"
+                  >
+                    <option value="">الكل</option>
+                    {districts.map((district) => (
+                      <option key={district.id} value={district.name}>{district.name}</option>
+                    ))}
+                  </select>
+                </div>
+              }
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 text-right mb-1">
@@ -637,9 +746,8 @@ export default function ComplaintsPage() {
                   className="w-full border border-gray-300 rounded-md p-2 text-right"
                 >
                   <option value="">الكل</option>
-                  {serviceTypes.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
+                  <option value="خدمات فردية">خدمات فردية (Individual Services)</option>
+                  <option value="خدمات عامة">خدمات عامة (Public Services)</option>
                 </select>
               </div>
 
@@ -689,6 +797,8 @@ export default function ComplaintsPage() {
                   key={complaint.id}
                   id={complaint.id}
                   title={complaint.title || 'بدون عنوان'}
+                  status={complaint.status}
+                  mainCategory={complaint.mainCategory}
                   type={complaint.Service_type || 'غير محدد'}
                   location={complaint.districtName || 'غير محدد'}
                   issue={complaint.description || 'لا يوجد وصف'}

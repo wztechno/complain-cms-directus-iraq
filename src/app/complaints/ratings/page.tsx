@@ -18,8 +18,15 @@ interface ComplaintDetails {
 
 interface Rating {
   id: string;
-  Complaint: string;
-  user: string;
+  Complaint: {
+    id: string;
+    title?: string;
+    Service_type?: string;
+  };
+  user: {
+    full_name?: string;
+    email?: string;
+  };
   rating_value: string;
   comment?: string;
   date_created?: string;
@@ -38,6 +45,7 @@ export default function RatingsPage() {
   const [filters, setFilters] = useState({
     rating: '',
     startDate: '',
+    mainCategory:'',
     endDate: '',
     serviceType: ''
   });
@@ -52,7 +60,7 @@ export default function RatingsPage() {
 
   const fetchRatings = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint_ratings');
+      const res = await fetch('https://complaint.top-wp.com/items/Complaint_ratings?fields=*,Complaint.*,user.*');
       if (!res.ok) {
         throw new Error('Failed to fetch ratings');
       }
@@ -65,7 +73,7 @@ export default function RatingsPage() {
           
           try {
             // Fetch complaint details
-            const complaintRes = await fetchWithAuth(`/items/Complaint/${rating.Complaint}`);
+            const complaintRes = await fetchWithAuth(`/items/Complaint/${rating.Complaint.id}`);
             if (complaintRes.ok) {
               const complaintData = await complaintRes.json();
               details.complaintDetails = complaintData.data;
@@ -106,6 +114,12 @@ export default function RatingsPage() {
     if (filters.serviceType) {
       filtered = filtered.filter(rating => 
         rating.complaintDetails?.Service_type === filters.serviceType
+      );
+    }
+
+    if (filters.mainCategory) {
+      filtered = filtered.filter(rating => 
+        rating.Complaint?.title === filters.mainCategory
       );
     }
 
@@ -204,7 +218,26 @@ export default function RatingsPage() {
                 className="w-full border border-gray-300 rounded-md p-2 text-right"
               >
                 <option value="">الكل</option>
-                {Array.from(new Set(ratings.map(r => r.complaintDetails?.Service_type)))
+                {Array.from(new Set(ratings.map(r => r.Complaint?.Service_type)))
+                  .filter(Boolean)
+                  .map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))
+                }
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                فئة الشكوى
+              </label>
+              <select
+                value={filters.mainCategory}
+                onChange={(e) => setFilters({ ...filters, mainCategory: e.target.value })}
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              >
+                <option value="">الكل</option>
+                {Array.from(new Set(ratings.map(r => r.Complaint?.title)))
                   .filter(Boolean)
                   .map(type => (
                     <option key={type} value={type}>{type}</option>
@@ -245,7 +278,7 @@ export default function RatingsPage() {
           <div key={item.id} className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-semibold">
-                {getUserName(item.userDetails)}
+                {getUserName(item.user)}
               </h3>
               <button className="text-gray-400 hover:text-gray-600">
                 <span className="text-2xl">⋮</span>
@@ -254,7 +287,7 @@ export default function RatingsPage() {
 
             <div className="mb-6 flex justify-between">
               <div className="text-xl font-semibold mb-3 text-right">
-                {item.complaintDetails?.title || 'شكوى رقم ' + item.Complaint}
+                {item.Complaint?.title || 'شكوى رقم ' + item.Complaint.id}
               </div>
               <div className="flex justify-end gap-1">
                 {renderStars(parseInt(item.rating_value))}

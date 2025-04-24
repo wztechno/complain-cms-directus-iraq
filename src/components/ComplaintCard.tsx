@@ -9,6 +9,8 @@ interface ComplaintCardProps {
   title: string;
   type: string;
   location: string;
+  status: string;
+  mainCategory:string;
   issue: string;
   progress: number;
   isSelected?: boolean;
@@ -18,9 +20,11 @@ interface ComplaintCardProps {
 const ComplaintCard = ({ 
   id, 
   title, 
+  status,
   type, 
   location, 
   issue, 
+  mainCategory,
   progress, 
   isSelected = false,
   onSelect 
@@ -73,18 +77,18 @@ const ComplaintCard = ({
         </div>
       </div>
       
-      <h3 className="text-xl font-semibold mb-2 text-right">{title}</h3>
+      <h3 className="text-xl font-semibold mb-2 text-right">{title} - {status && status}</h3>
 
       <div className="relative pt-1">
         <div className="flex mb-2 items-center justify-between">
           <div className="text-left">
             <span className="text-xs font-semibold inline-block text-blue-600">
-              {progress}%
+              {mainCategory}
             </span>
           </div>
           <div className="text-right">
-            <span className="text-xs font-semibold inline-block text-blue-600">
-              استقبال شكوى
+          <span className="text-xs font-semibold inline-block text-blue-600">
+              {progress}%
             </span>
           </div>
         </div>

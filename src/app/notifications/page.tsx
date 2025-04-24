@@ -233,22 +233,19 @@ export default function NotificationsPage() {
       // Variable to store the final user IDs for the many-to-many relationship
       let userIds: number[] = [];
       let districtId: number | null = null;
-      let isForAllUsers = true; // Default to sending to all users
       
       // If sending to a specific user
-      if (!notificationForm.sendToAll && selectedUser) {
+      if (!notificationForm.sendToAll && !notificationForm.filterByDistrict && selectedUser) {
         // Convert to number and ensure it's valid
         const userId = parseInt(selectedUser, 10);
         if (!isNaN(userId)) {
           userIds = [userId];
-          isForAllUsers = false; // Not for all users, just for this specific user
         }
         console.log(`Notification will be sent to user ID: ${userId}`);
       } 
       // If filtering by district
       else if (notificationForm.filterByDistrict && selectedDistrict) {
         districtId = selectedDistrict;
-        isForAllUsers = false; // Not for all users, just for users in this district
         
         // Use the users we already fetched for this district
         if (usersInSelectedDistrict.length > 0) {
@@ -275,12 +272,21 @@ export default function NotificationsPage() {
         console.log(`Notification will be sent to ${userIds.length} users in district ID: ${selectedDistrict}`);
       } 
       // If sending to all users
-      else {
-        // For all users, leave userIds as an empty array and isForAllUsers as true
-        userIds = [];
+      else if (notificationForm.sendToAll) {
+        // For all users, use the users we already have in state
         districtId = null;
-        isForAllUsers = true;
-        console.log('Notification will be sent to all users');
+        
+        // Use all available users
+        userIds = users
+          .map(user => parseInt(user.id, 10))
+          .filter(id => !isNaN(id));
+          
+        console.log(`Notification will be sent to all ${userIds.length} users`);
+      }
+      // Default case - no valid selection
+      else {
+        alert('يرجى تحديد خيار واحد على الأقل لإرسال الإشعار');
+        return;
       }
 
       // Get the token
@@ -303,18 +309,14 @@ export default function NotificationsPage() {
       
       // Format users field based on selection type
       if (userIds.length > 0) {
-        // Format for many-to-many relationship using the junction collection format
+        // Include users for both specific selection and send to all
         notificationData.users = {
           create: userIds.map(id => ({ Users_id: id })),
           delete: []
         };
-      } else if (isForAllUsers) {
-        // If explicitly sending to all users, set users to null (which means "all users" in Directus)
-        notificationData.users = null;
       } else {
-        // If we have a district but no users for it, don't include the users field at all
-        // This prevents the API from creating null user records
-        // The district field alone should be sufficient for the notification
+        // No users selected, show warning
+        console.warn('No users specified for notification - it may not be delivered');
       }
 
       console.log('Sending notification with exact format:', JSON.stringify(notificationData));
@@ -670,10 +672,11 @@ export default function NotificationsPage() {
                   <input
                     type="radio"
                     id="sendToUser"
-                    checked={!!selectedUser}
+                    checked={!notificationForm.sendToAll && !notificationForm.filterByDistrict}
                     onChange={() => {
                       setNotificationForm({
                         ...notificationForm, 
+                        sendToAll: false,
                         filterByDistrict: false
                       });
                       setSelectedDistrict(null);
@@ -682,6 +685,26 @@ export default function NotificationsPage() {
                   />
                   <label htmlFor="sendToUser" className="text-sm font-medium text-gray-700">
                     إرسال إلى مستخدم محدد
+                  </label>
+                </div>
+                <div className="flex items-center gap-2 justify-end">
+                  <input
+                    type="radio"
+                    id="sendToAll"
+                    checked={notificationForm.sendToAll}
+                    onChange={() => {
+                      setNotificationForm({
+                        ...notificationForm, 
+                        sendToAll: true,
+                        filterByDistrict: false
+                      });
+                      setSelectedUser("");
+                      setSelectedDistrict(null);
+                    }}
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="sendToAll" className="text-sm font-medium text-gray-700">
+                    إرسال إلى جميع المستخدمين 
                   </label>
                 </div>
                 
@@ -706,7 +729,7 @@ export default function NotificationsPage() {
               </div>
               
               {/* User Selection */}
-              {selectedUser || (!notificationForm.filterByDistrict && !notificationForm.sendToAll) ? (
+              {!notificationForm.sendToAll && !notificationForm.filterByDistrict ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
                     المستخدم

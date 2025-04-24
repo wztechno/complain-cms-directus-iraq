@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FaArrowRight, FaUserCircle } from 'react-icons/fa';
+import { FaArrowRight, FaUserCircle, FaBell } from 'react-icons/fa';
 
 interface User {
   id: number;
@@ -31,11 +31,31 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
   const [user, setUser] = useState<UserWithComplaints | null>(null);
   const [districtName, setDistrictName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notification, setNotification] = useState({ name: '', content: '' });
+  const [isSending, setIsSending] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     fetchUserDetails();
+    checkAdminStatus();
   }, [params.id]);
+
+  const checkAdminStatus = () => {
+    const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+    try {
+      const storedUserInfo = localStorage.getItem('user_info');
+      if (storedUserInfo) {
+        const userInfoData = JSON.parse(storedUserInfo);
+        const admin = userInfoData?.role === ADMIN_ROLE_ID;
+        setIsAdmin(admin);
+      }
+    } catch (error) {
+      console.error("Error checking admin role:", error);
+      setIsAdmin(false);
+    }
+  };
 
   const fetchUserDetails = async () => {
     try {
@@ -76,6 +96,65 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
     } catch (error) {
       console.error('Error fetching user details:', error);
       setLoading(false);
+    }
+  };
+
+  const sendNotification = async () => {
+    if (!notification.name || !notification.content) {
+      alert('يرجى ملء جميع الحقول المطلوبة');
+      return;
+    }
+
+    try {
+      setIsSending(true);
+      
+      // Get the token
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        alert('جلسة تسجيل الدخول منتهية. يرجى تسجيل الدخول مرة أخرى.');
+        setIsSending(false);
+        return;
+      }
+
+      // Create the notification data
+      const notificationData = {
+        name: notification.name,
+        content: notification.content,
+        users: {
+          create: [{ id: parseInt(params.id, 10) }],
+          delete: []
+        }
+      };
+      
+      // Send the notification
+      const response = await fetch('https://complaint.top-wp.com/items/notification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(notificationData)
+      });
+      
+      if (response.ok) {
+        alert('تم إرسال الإشعار بنجاح');
+        setNotification({ name: '', content: '' });
+        setShowNotificationModal(false);
+      } else {
+        let errorDetails = '';
+        try {
+          const errorJson = await response.json();
+          errorDetails = errorJson.errors ? errorJson.errors.map((err: { message: string }) => err.message).join('; ') : 'خطأ غير معروف';
+        } catch {
+          errorDetails = await response.text();
+        }
+        alert(`حدث خطأ أثناء إرسال الإشعار: ${errorDetails}`);
+      }
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      alert(`حدث خطأ أثناء إرسال الإشعار: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -123,7 +202,67 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
               <div className="text-gray-500">{user.email}</div>
             </div>
           </div>
+          
+          {isAdmin && (
+            <button 
+              onClick={() => setShowNotificationModal(true)}
+              className="bg-[#4664AD] hover:bg-[#3A5499] text-white px-4 py-2 rounded-lg flex items-center gap-2"
+            >
+              <FaBell size={14} />
+              <span>إرسال إشعار</span>
+            </button>
+          )}
         </div>
+
+        {/* Notification Modal */}
+        {showNotificationModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h2 className="text-xl font-bold mb-4 text-right">إرسال إشعار إلى {user.full_name}</h2>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                  عنوان الإشعار
+                </label>
+                <input 
+                  type="text" 
+                  value={notification.name}
+                  onChange={(e) => setNotification({...notification, name: e.target.value})}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-right"
+                  placeholder="أدخل عنوان الإشعار"
+                />
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                  محتوى الإشعار
+                </label>
+                <textarea 
+                  value={notification.content}
+                  onChange={(e) => setNotification({...notification, content: e.target.value})}
+                  className="w-full p-2 border border-gray-300 rounded-lg text-right h-32"
+                  placeholder="أدخل محتوى الإشعار"
+                />
+              </div>
+              
+              <div className="flex justify-between mt-6">
+                <button 
+                  onClick={() => setShowNotificationModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  إلغاء
+                </button>
+                <button 
+                  onClick={sendNotification}
+                  disabled={isSending}
+                  className="bg-[#4664AD] hover:bg-[#3A5499] text-white px-4 py-2 rounded-lg flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isSending ? 'جاري الإرسال...' : 'إرسال الإشعار'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>

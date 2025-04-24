@@ -13,6 +13,11 @@ interface User {
   phone: string | null;
   created_at?: string;
   district?: number;
+  stats?: {
+    complaints: number;
+    ratings: number;
+    notifications: number;
+  };
 }
 
 interface District {
@@ -26,6 +31,7 @@ export default function CitizensPage() {
   const [districts, setDistricts] = useState<District[]>([]);
   const [districtMap, setDistrictMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const router = useRouter();
 
@@ -48,6 +54,7 @@ export default function CitizensPage() {
 
   const fetchUsersAndDistricts = async () => {
     try {
+      setLoading(true);
       const [userRes, districtRes] = await Promise.all([
         fetch('https://complaint.top-wp.com/items/Users'),
         fetchWithAuth('/items/District'),
@@ -62,25 +69,79 @@ export default function CitizensPage() {
         (user: User) => user.full_name !== null && user.email !== null
       );
 
-      setUsers(filteredData);
-      setFilteredUsers(filteredData);
-      setDistricts(districtRes.data);
-
+      // Get district mapping
       const districtLookup = districtRes.data.reduce((acc: Record<number, string>, district: District) => {
         acc[district.id] = district.name;
         return acc;
       }, {});
       setDistrictMap(districtLookup);
-
+      
+      // Set initial users without stats
+      setUsers(filteredData);
+      setFilteredUsers(filteredData);
+      setDistricts(districtRes.data);
       setLoading(false);
+      
+      // Then fetch statistics (don't block the UI)
+      setLoadingStats(true);
+      try {
+        // Fetch statistics for each user
+        const usersWithStats = await Promise.all(
+          filteredData.map(async (user: User) => {
+            try {
+              // Fetch user statistics in parallel
+              const [complaintsRes, ratingsRes, notificationsRes] = await Promise.all([
+                fetch(`https://complaint.top-wp.com/items/Complaint?filter[user][_eq]=${user.id}`),
+                fetch(`https://complaint.top-wp.com/items/Complaint_ratings?filter[user][_eq]=${user.id}`),
+                fetchWithAuth(`/items/notification?filter[users][Users_id][_eq]=${user.id}`)
+              ]);
+
+              // Process the responses
+              const complaintsData = await complaintsRes.json();
+              const ratingsData = await ratingsRes.json();
+              const notificationsData = await notificationsRes;
+
+              // Add statistics to user object
+              return {
+                ...user,
+                stats: {
+                  complaints: complaintsData.data?.length || 0,
+                  ratings: ratingsData.data?.length || 0,
+                  notifications: notificationsData.data?.length || 0
+                }
+              };
+            } catch (error) {
+              console.error(`Error fetching statistics for user ${user.id}:`, error);
+              // Return user with empty stats if error occurs
+              return {
+                ...user,
+                stats: {
+                  complaints: 0,
+                  ratings: 0,
+                  notifications: 0
+                }
+              };
+            }
+          })
+        );
+
+        setUsers(usersWithStats);
+        setFilteredUsers(handleFilterWithData(usersWithStats)); // Apply current filters to new data
+      } catch (statsError) {
+        console.error('Error fetching user statistics:', statsError);
+      } finally {
+        setLoadingStats(false);
+      }
     } catch (error) {
       console.error('Error fetching users or districts:', error);
       setLoading(false);
+      setLoadingStats(false);
     }
   };
 
-  const handleFilter = () => {
-    let filtered = [...users];
+  // Helper function to apply filters to user data
+  const handleFilterWithData = (userData: User[]) => {
+    let filtered = [...userData];
 
     if (filters.name) {
       filtered = filtered.filter(user =>
@@ -121,7 +182,11 @@ export default function CitizensPage() {
       });
     }
 
-    setFilteredUsers(filtered);
+    return filtered;
+  };
+
+  const handleFilter = () => {
+    setFilteredUsers(handleFilterWithData(users));
   };
 
   const handleExport = () => {
@@ -277,6 +342,31 @@ export default function CitizensPage() {
                 المحافظة: {districtMap[user.district] || 'غير معروفة'}
               </p>
             )}
+            
+            {/* User Statistics Section */}
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <h4 className="text-sm font-medium text-gray-700 mb-2 text-right">الإحصائيات</h4>
+              {loadingStats ? (
+                <div className="flex justify-center items-center py-3">
+                  <div className="animate-pulse text-gray-400 text-sm">جاري تحميل الإحصائيات...</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-gray-50 p-2 rounded text-center">
+                    <div className="text-lg font-semibold text-blue-600">{user.stats?.complaints || 0}</div>
+                    <div className="text-xs text-gray-500">الشكاوى</div>
+                  </div>
+                  <div className="bg-gray-50 p-2 rounded text-center">
+                    <div className="text-lg font-semibold text-yellow-600">{user.stats?.ratings || 0}</div>
+                    <div className="text-xs text-gray-500">التقييمات</div>
+                  </div>
+                  <div className="bg-gray-50 p-2 rounded text-center">
+                    <div className="text-lg font-semibold text-green-600">{user.stats?.notifications || 0}</div>
+                    <div className="text-xs text-gray-500">الإشعارات</div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>

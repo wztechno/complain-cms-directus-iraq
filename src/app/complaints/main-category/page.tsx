@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
+import { exportToCSV } from '@/utils/export';
 
 interface MainCategory {
   id: number;
@@ -36,12 +37,20 @@ export default function MainCategoryPage() {
     router.push(`/complaints/main-category/${categoryId}`);
   };
 
+  const handleExport = () => {
+    const headers = ['id', 'name', 'service_type'];
+    exportToCSV(categories, headers, 'main_category_export');
+  };
+  
+
   return (
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">الفئات الأساسية للشكاوى</h1>
-        <button className="bg-[#4664AD] text-white px-4 py-2 rounded-lg">
-          إضافة فئة جديدة
+        <button 
+          onClick={handleExport}
+          className="bg-[#4664AD] text-white px-4 py-2 rounded-lg">
+          تصدير التقييمات 
         </button>
       </div>
 

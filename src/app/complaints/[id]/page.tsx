@@ -107,6 +107,7 @@ interface ComplaintData {
   district: number;
   completion_percentage: number;
   user: number | null;
+  note: string;
   // Media file IDs
   image?: string | null;
   video?: string | null;
@@ -125,13 +126,13 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
   const [subcategories, setSubcategories] = useState<Record<number, string>>({});
   const [complaintSubcategories, setComplaintSubcategories] = useState<Record<number, string>>({});
   const [statusSubcategories, setStatusSubcategories] = useState<Record<number, string>>({});
-  const [usedStatusSubcategories, setUsedStatusSubcategories] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState<Partial<ComplaintData>>({});
+  const [editForm, setEditForm] = useState<Partial<ComplaintData & { is_done?: boolean }>>({});
   const [isUpdating, setIsUpdating] = useState(false);
+  const [statusIsDone, setStatusIsDone] = useState<boolean>(false);
 
   useEffect(() => {
     fetchData();
@@ -164,12 +165,23 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         return;
       }
 
+      // Fetch the status "done" state if there's a status subcategory
+      if (complaintRes.data.status_subcategory) {
+        try {
+          const statusRes = await fetchWithAuth(`/items/Status_subcategory/${complaintRes.data.status_subcategory}`);
+          if (statusRes && statusRes.data && statusRes.data.done !== undefined) {
+            setStatusIsDone(statusRes.data.done);
+          }
+        } catch (statusError) {
+          console.error('Error fetching status done state:', statusError);
+        }
+      }
+
       // Now fetch other data using the complaint data
-      const [districtsRes, subcategoriesRes, complaintSubcategoriesRes, timelineRes] = await Promise.all([
+      const [districtsRes, subcategoriesRes, complaintSubcategoriesRes] = await Promise.all([
         fetchWithAuth('/items/District'),
         fetchWithAuth(`/items/Status_subcategory?filter[complaint_subcategory][_eq]=${complaintRes.data.Complaint_Subcategory}&filter[district][_eq]=${complaintRes.data.district}`),
         fetch('https://complaint.top-wp.com/items/Complaint_sub_category'),
-        fetchWithAuth(`/items/ComplaintTimeline?filter[complaint_id][_eq]=${complaintRes.data.id}`),
       ]);
 
       const complaintSubcategoriesData = await complaintSubcategoriesRes?.json();
@@ -393,14 +405,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
           completion_percentage_type: typeof complaintRes.data.completion_percentage
         });
       }
-
-      // Extract used status subcategories from timeline
-      const usedStatuses = timelineRes?.data?.map((item: any) => item.status_subcategory) || [];
-      // Include current status in the used list
-      if (data.status_subcategory && !usedStatuses.includes(data.status_subcategory)) {
-        usedStatuses.push(data.status_subcategory);
-      }
-      setUsedStatusSubcategories(usedStatuses);
     } catch (err) {
       console.error('Error:', err);
       setError('حدث خطأ أثناء تحميل الشكوى');
@@ -414,19 +418,42 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
     try {
       setIsUpdating(true);
       
-      // Include both status_subcategory and completion_percentage in the update data
+      // Update data for the complaint
       const updateData = {
         status_subcategory: editForm.status_subcategory,
-        completion_percentage: editForm.completion_percentage
+        completion_percentage: editForm.completion_percentage,
+        note: editForm.note
       };
       
       console.log('Updating complaint with data:', updateData);
       
-      // Send update request
+      // Send update request for the complaint
       const response = await fetchWithAuth(`/items/Complaint/${complaint.id}`, {
         method: 'PATCH',
         body: JSON.stringify(updateData)
       });
+      
+      // If the status subcategory is set and is_done flag exists, update the status subcategory
+      if (editForm.status_subcategory && editForm.is_done !== undefined) {
+        try {
+          console.log(`Updating status subcategory ${editForm.status_subcategory} done field to: ${editForm.is_done}`);
+          
+          // Update the done field in the Status_subcategory entity
+          const statusResponse = await fetchWithAuth(`/items/Status_subcategory/${editForm.status_subcategory}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              done: editForm.is_done
+            })
+          });
+          
+          if (statusResponse) {
+            console.log('Successfully updated Status_subcategory done status:', statusResponse.data);
+          }
+        } catch (statusError) {
+          console.error('Error updating Status_subcategory done field:', statusError);
+          // Continue execution - don't fail the whole operation if just this part fails
+        }
+      }
       
       if (response) {
         // Exit edit mode
@@ -441,6 +468,11 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             id: response.data.id,
             status_subcategory: response.data.status_subcategory
           });
+          
+          // Update the status done state for immediate UI feedback
+          if (editForm.status_subcategory && editForm.is_done !== undefined) {
+            setStatusIsDone(editForm.is_done);
+          }
         }
         
         try {
@@ -553,10 +585,31 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
               if (isEditing && !isUpdating) {
                 handleSaveEdit();
               } else if (!isEditing) {
+                // Set initial values from the complaint
                 setEditForm({
                   status_subcategory: complaint?.status_subcategory,
                   completion_percentage: complaint?.completion_percentage || 0,
+                  is_done: false, // Default to false initially
+                  note: complaint?.note || ''
                 });
+                
+                // If there's a status_subcategory, fetch its current "done" status
+                if (complaint?.status_subcategory) {
+                  fetchWithAuth(`/items/Status_subcategory/${complaint.status_subcategory}`)
+                    .then(response => {
+                      if (response && response.data && response.data.done !== undefined) {
+                        // Update the is_done field with the actual value from the server
+                        setEditForm(prev => ({
+                          ...prev,
+                          is_done: response.data.done
+                        }));
+                      }
+                    })
+                    .catch(err => {
+                      console.error('Error fetching status subcategory done field:', err);
+                    });
+                }
+                
                 setIsEditing(true);
               }
             }}
@@ -631,24 +684,69 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
               </label>
               <select
                 value={editForm.status_subcategory || ''}
-                onChange={(e) => setEditForm({...editForm, status_subcategory: Number(e.target.value)})}
+                onChange={(e) => {
+                  const newStatusId = Number(e.target.value);
+                  setEditForm({...editForm, status_subcategory: newStatusId});
+                  
+                  // If a valid status is selected, fetch its current "done" status
+                  if (newStatusId) {
+                    fetchWithAuth(`/items/Status_subcategory/${newStatusId}`)
+                      .then(response => {
+                        if (response && response.data && response.data.done !== undefined) {
+                          // Update the is_done field with the actual value from the server
+                          setEditForm(prev => ({
+                            ...prev,
+                            is_done: response.data.done
+                          }));
+                        }
+                      })
+                      .catch(err => {
+                        console.error('Error fetching status subcategory done field:', err);
+                      });
+                  }
+                }}
                 className="w-full border border-gray-300 p-2 rounded text-right"
               >
                 <option value="">اختر الحالة</option>
-                {Object.entries(statusSubcategories).map(([id, name]) => {
-                  const isDisabled = usedStatusSubcategories.includes(Number(id));
-                  return (
-                    <option 
-                      key={id} 
-                      value={id}
-                      disabled={isDisabled}
-                      className={isDisabled ? 'text-gray-400' : ''}
-                    >
-                      {name} {isDisabled ? '(تم استخدامها)' : ''}
-                    </option>
-                  );
-                })}
+                {Object.entries(statusSubcategories).map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
               </select>
+              
+              {/* New toggle for status done */}
+              <div className="mt-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700 text-right">
+                    هل تم الانتهاء من هذه الحالة؟
+                  </label>
+                  <div className="relative inline-block w-12 h-6 transition duration-200 ease-in-out rounded-full">
+                    <input
+                      type="checkbox"
+                      id="statusDoneToggle"
+                      checked={editForm.is_done || false}
+                      onChange={(e) => setEditForm({...editForm, is_done: e.target.checked})}
+                      className="opacity-0 w-0 h-0"
+                    />
+                    <label
+                      htmlFor="statusDoneToggle"
+                      className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition duration-200 ease-in-out ${
+                        editForm.is_done ? 'bg-green-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`absolute left-1 bottom-1 bg-white w-4 h-4 rounded-full transition duration-200 ease-in-out ${
+                          editForm.is_done ? 'transform translate-x-6' : ''
+                        }`}
+                      />
+                    </label>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 text-right mt-1">
+                  {editForm.is_done ? 'نعم، الحالة مكتملة' : 'لا، الحالة قيد المعالجة'}
+                </p>
+              </div>
             </div>
             
             <div>
@@ -676,6 +774,17 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
                 {complaint?.description || '—'}
               </div>
             </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                ملاحظة
+              </label>
+              <textarea 
+                value={editForm.note || complaint?.note || ''}
+                onChange={(e) => setEditForm({...editForm, note: e.target.value})}
+                className="w-full border border-gray-300 p-2 rounded text-right min-h-[6rem]"
+              />
+            </div>
           </div>
           
           <div className="flex gap-3 justify-end mt-4">
@@ -699,8 +808,26 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             <Field label="القضاء" value={complaint?.governorate_name || null} />
             <Field label="الفئة الفرعية للشكوى" value={complaintSubcategories[complaint?.Complaint_Subcategory || 0] || null} />
             <Field label="الفئة الفرعية للحالة" value={statusSubcategories[complaint?.status_subcategory || 0] || null} />
+            
+            {/* Status done indicator in view mode */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                حالة الإنجاز
+              </label>
+              <div className="flex items-center justify-between bg-gray-100 p-2 rounded">
+                <span className="text-right">
+                  {statusIsDone ? 'تم إنجاز هذه الحالة' : 'لم يتم إنجاز هذه الحالة بعد'}
+                </span>
+                <div className={`relative inline-block w-10 h-5 rounded-full ${statusIsDone ? 'bg-green-500' : 'bg-gray-300'}`}>
+                  <span 
+                    className={`absolute left-1 bottom-1 bg-white w-3 h-3 rounded-full ${statusIsDone ? 'transform translate-x-4' : ''}`}
+                  />
+                </div>
+              </div>
+            </div>
+            
             <Field label="نسبة الإنجاز" value={`${complaint?.completion_percentage || 0}%`} />
-            <Field label="وصف الشكوى" value={`${complaint?.description || 0}`} />
+            <Field label="ملاحظة" value={`${complaint?.note || ''}`} />
           </div>
         </div>
       )}

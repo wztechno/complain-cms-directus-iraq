@@ -62,13 +62,19 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
       
           // Get user info from localStorage instead of making an API call
           const userInfoStr = localStorage.getItem('user_info');
-          let policyAdminJson = { data: null };
+          interface PolicyAdmin {
+            id: string;
+            role?: string;
+            [key: string]: any;
+          }
+          // policyAdminJson will hold the current user data
+          let policyAdminJson: { data: PolicyAdmin | null } = { data: null };
           let currentUserId = '';
           
           if (userInfoStr) {
             try {
               const userData = JSON.parse(userInfoStr);
-              policyAdminJson = { data: userData };
+              policyAdminJson = { data: userData as PolicyAdmin };
               currentUserId = userData.id;
               console.log(`User info from localStorage:`, policyAdminJson);
               console.log(`Current user ID: ${currentUserId}`);
@@ -76,15 +82,15 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
               console.error('Error parsing user info from localStorage:', parseError);
               // Fallback to API call if localStorage data is invalid
               const policyAdmin = await fetch(`${BASE_URL}/users/me`, { headers });
-              policyAdminJson = await policyAdmin.json();
-              currentUserId = policyAdminJson.data?.id;
+              policyAdminJson = (await policyAdmin.json()) as { data: PolicyAdmin };
+              currentUserId = policyAdminJson.data?.id || '';
               console.log(`Fallback to API - Policy admin:`, policyAdminJson);
             }
           } else {
             // Fallback to API call if localStorage doesn't have the data
             const policyAdmin = await fetch(`${BASE_URL}/users/me`, { headers });
-            policyAdminJson = await policyAdmin.json();
-            currentUserId = policyAdminJson.data?.id;
+            policyAdminJson = (await policyAdmin.json()) as { data: PolicyAdmin };
+            currentUserId = policyAdminJson.data?.id || '';
             console.log(`Fallback to API - Policy admin:`, policyAdminJson);
           }
           

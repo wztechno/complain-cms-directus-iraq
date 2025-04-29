@@ -34,6 +34,7 @@ interface Complaint {
   status_subcategory: string | number;
   completion_percentage: number;
   Complaint_Subcategory?: number | null;
+  status?: string | number;
 }
 
 interface StatusSubcategory {
@@ -134,7 +135,8 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
         throw new Error(`API call failed: ${response.status}`);
       }
       
-      const data = await response.json();
+      // Expect data in shape { data: Complaint[] }
+      const data = (await response.json()) as { data: Complaint[] };
       console.log('API response:', data);
       
       if (!data || !data.data || !Array.isArray(data.data)) {
@@ -145,7 +147,7 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
       console.log(`Received ${data.data.length} complaints from API`);
       
       // Process complaints data
-      let complaintsData = data.data;
+      const complaintsData: Complaint[] = data.data;
       
       // Fetch districts to get district names using direct fetch for consistency
       const districtsResponse = await fetch('https://complaint.top-wp.com/items/District', {
@@ -156,35 +158,30 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
         }
       });
       
-      let districtsMap = new Map();
+      let districtsMap = new Map<number, string>();
       if (districtsResponse.ok) {
-        const districtsData = await districtsResponse.json();
-        if (districtsData?.data && Array.isArray(districtsData.data)) {
-          districtsMap = new Map(
-            districtsData.data
-              .filter((district: any) => district && district.id && district.name)
-              .map((district: any) => [district.id, district.name])
-          );
+        // Expect data in shape { data: { id: number; name: string }[] }
+        const districtsJson = (await districtsResponse.json()) as { data: { id: number; name: string }[] };
+        if (Array.isArray(districtsJson.data)) {
+          districtsMap = new Map(districtsJson.data.map(({ id, name }) => [id, name]));
         }
       }
       
       // Add district names to complaints
-      const processedComplaints = complaintsData
-        .filter((complaint: any) => complaint !== null)
-        .map((complaint: Complaint) => {
-          let districtName = 'غير محدد';
-          if (complaint.district) {
-            const mappedName = districtsMap.get(complaint.district);
-            if (mappedName) {
-              districtName = mappedName;
-            }
+      const processedComplaints = complaintsData.map((complaint) => {
+        let districtName = 'غير محدد';
+        if (complaint.district) {
+          const mappedName = districtsMap.get(complaint.district);
+          if (mappedName) {
+            districtName = mappedName;
           }
-          
-          return {
-            ...complaint,
-            districtName
-          };
-        });
+        }
+        
+        return {
+          ...complaint,
+          districtName
+        };
+      });
       
       setComplaints(processedComplaints);
       setLoadingComplaints(false);
@@ -234,7 +231,8 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
         throw new Error(`API call failed: ${response.status}`);
       }
       
-      const data = await response.json();
+      // Expect data in shape { data: StatusSubcategory[] }
+      const data = (await response.json()) as { data: StatusSubcategory[] };
       console.log('API response for status subcategories:', data);
       
       if (!data || !data.data || !Array.isArray(data.data)) {
@@ -245,7 +243,7 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
       console.log(`Received ${data.data.length} status subcategories from API`);
       
       // Process status subcategories data
-      let statusSubcategoryData = data.data;
+      const statusSubcategoryData: StatusSubcategory[] = data.data;
       
       // Fetch districts to get district names using direct fetch for consistency
       const districtsResponse = await fetch('https://complaint.top-wp.com/items/District', {
@@ -256,35 +254,30 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
         }
       });
       
-      let districtsMap = new Map();
+      let districtsMap = new Map<number, string>();
       if (districtsResponse.ok) {
-        const districtsData = await districtsResponse.json();
-        if (districtsData?.data && Array.isArray(districtsData.data)) {
-          districtsMap = new Map(
-            districtsData.data
-              .filter((district: any) => district && district.id && district.name)
-              .map((district: any) => [district.id, district.name])
-          );
+        // Expect data in shape { data: { id: number; name: string }[] }
+        const districtsJson = (await districtsResponse.json()) as { data: { id: number; name: string }[] };
+        if (Array.isArray(districtsJson.data)) {
+          districtsMap = new Map(districtsJson.data.map(({ id, name }) => [id, name]));
         }
       }
       
       // Add district names to status subcategories
-      const processedStatusSubcategories = statusSubcategoryData
-        .filter((item: any) => item !== null)
-        .map((item: StatusSubcategory) => {
-          let districtName = 'غير محدد';
-          if (item.district) {
-            const mappedName = districtsMap.get(item.district);
-            if (mappedName) {
-              districtName = mappedName;
-            }
+      const processedStatusSubcategories = statusSubcategoryData.map((item) => {
+        let districtName = 'غير محدد';
+        if (item.district) {
+          const mappedName = districtsMap.get(item.district);
+          if (mappedName) {
+            districtName = mappedName;
           }
-          
-          return {
-            ...item,
-            districtName
-          };
-        });
+        }
+        
+        return {
+          ...item,
+          districtName
+        };
+      });
       
       setStatusSubcategories(processedStatusSubcategories);
       setLoadingStatusSubcategories(false);
@@ -530,6 +523,8 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
                     key={complaint.id}
                     id={complaint.id}
                     title={complaint.title || 'بدون عنوان'}
+                    status={String(complaint.status ? complaint.status : "")}
+                    mainCategory={category?.mainCategoryDetails?.name || ''}
                     type={complaint.Service_type || 'غير محدد'}
                     location={complaint.districtName || 'غير محدد'}
                     issue={complaint.description || 'لا يوجد وصف'}

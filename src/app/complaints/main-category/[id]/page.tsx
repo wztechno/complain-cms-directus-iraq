@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import ComplaintCard from '@/components/ComplaintCard';
-import { fetchWithAuth } from '@/utils/api';
 
 interface MainCategory {
   id: number;
@@ -25,6 +24,7 @@ interface Complaint {
   status_subcategory: string | number;
   completion_percentage: number;
   Complaint_main_category?: number | null;
+  status?: string | number;
 }
 
 export default function MainCategoryDetailsPage({ params }: { params: { id: string } }) {
@@ -95,7 +95,7 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
         throw new Error(`API call failed: ${response.status}`);
       }
       
-      const data = await response.json();
+      const data = (await response.json()) as { data: Complaint[] };
       console.log('API response:', data);
       
       if (!data || !data.data || !Array.isArray(data.data)) {
@@ -106,7 +106,7 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
       console.log(`Received ${data.data.length} complaints from API`);
       
       // Process complaints data
-      let complaintsData = data.data;
+      const complaintsData: Complaint[] = data.data;
       
       // Fetch districts to get district names using direct fetch for consistency
       const districtsResponse = await fetch('https://complaint.top-wp.com/items/District', {
@@ -117,35 +117,30 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
         }
       });
       
-      let districtsMap = new Map();
+      let districtsMap = new Map<number, string>();
       if (districtsResponse.ok) {
-        const districtsData = await districtsResponse.json();
-        if (districtsData?.data && Array.isArray(districtsData.data)) {
-          districtsMap = new Map(
-            districtsData.data
-              .filter((district: any) => district && district.id && district.name)
-              .map((district: any) => [district.id, district.name])
-          );
+        // Expect data in the shape { data: { id: number; name: string }[] }
+        const districtsJson = (await districtsResponse.json()) as { data: { id: number; name: string }[] };
+        if (Array.isArray(districtsJson.data)) {
+          districtsMap = new Map(districtsJson.data.map(({ id, name }) => [id, name]));
         }
       }
       
       // Add district names to complaints
-      const processedComplaints = complaintsData
-        .filter((complaint: any) => complaint !== null)
-        .map((complaint: Complaint) => {
-          let districtName = 'غير محدد';
-          if (complaint.district) {
-            const mappedName = districtsMap.get(complaint.district);
-            if (mappedName) {
-              districtName = mappedName;
-            }
+      const processedComplaints = complaintsData.map((complaint) => {
+        let districtName = 'غير محدد';
+        if (complaint.district) {
+          const mappedName = districtsMap.get(complaint.district);
+          if (mappedName) {
+            districtName = mappedName;
           }
-          
-          return {
-            ...complaint,
-            districtName
-          };
-        });
+        }
+        
+        return {
+          ...complaint,
+          districtName
+        };
+      });
       
       setComplaints(processedComplaints);
       setLoadingComplaints(false);
@@ -282,6 +277,8 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
                     key={complaint.id}
                     id={complaint.id}
                     title={complaint.title || 'بدون عنوان'}
+                    status={String(complaint.status ? complaint.status : "")}
+                    mainCategory={category!.name}
                     type={complaint.Service_type || 'غير محدد'}
                     location={complaint.districtName || 'غير محدد'}
                     issue={complaint.description || 'لا يوجد وصف'}

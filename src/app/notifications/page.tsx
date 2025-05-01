@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { FaPlus, FaTrash, FaBell, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
+import { GrFilter } from 'react-icons/gr';
 import { fetchWithAuth } from '@/utils/api';
 import { useRouter } from 'next/navigation';
 
@@ -33,13 +34,16 @@ interface District {
 export default function NotificationsPage() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<{ district:string; name:string; startDate:string; endDate:string }>({
+    district: '', name: '', startDate: '', endDate: ''
+  });
   const [users, setUsers] = useState<User[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [selectedDistrict, setSelectedDistrict] = useState<number | null>(null);
   
@@ -102,11 +106,11 @@ export default function NotificationsPage() {
       if (response && response.data) {
         console.log(`Successfully fetched ${response.data.length} users`);
         // Ensure user IDs are consistently stored as strings for easier comparison
-        const processedUsers = response.data.map((user: any) => ({
+        const processedUsers = (response.data as User[]).map((user) => ({
           ...user,
           id: user.id.toString() // Ensure IDs are strings
         }));
-        console.log('Processed users with string IDs:', processedUsers.map((u: any) => `${u.id} (${u.full_name})`));
+        console.log('Processed users with string IDs:', processedUsers.map((u: User) => `${u.id} (${u.full_name})`));
         setUsers(processedUsers);
       } else {
         console.warn('No users data returned from API');
@@ -297,7 +301,7 @@ export default function NotificationsPage() {
       }
 
       // Create the notification data with the exact format needed
-      const notificationData: Record<string, any> = {
+      const notificationData: Record<string, unknown> = {
         name: notificationForm.name,
         content: notificationForm.content
       };
@@ -344,7 +348,6 @@ export default function NotificationsPage() {
             filterByDistrict: false
           });
           setSelectedUser("");
-          setSelectedUsers([]);
           setSelectedDistrict(null);
           setUsersInSelectedDistrict([]);
           setShowCreateModal(false);
@@ -362,14 +365,15 @@ export default function NotificationsPage() {
             const errorJson = await response.json();
             console.error('Error response (JSON):', errorJson);
             
+            interface ErrorDetail { message?: string; extensions?: { code?: string } }
             if (errorJson.errors && errorJson.errors.length > 0) {
-              errorDetails = errorJson.errors.map((err: any) => 
+              errorDetails = (errorJson.errors as ErrorDetail[]).map((err) =>
                 `${err.message || ''} (${err.extensions?.code || 'UNKNOWN_ERROR'})`
               ).join('; ');
             } else {
               errorDetails = JSON.stringify(errorJson);
             }
-          } catch (e) {
+          } catch {
             // If not JSON, get as text
             errorDetails = await response.text();
             console.error('Error response (text):', errorDetails);
@@ -378,9 +382,9 @@ export default function NotificationsPage() {
           // Show error message
           alert(`حدث خطأ أثناء إنشاء الإشعار: ${response.status} - ${errorDetails}`);
         }
-      } catch (error) {
-        console.error('Error creating notification:', error);
-        alert(`حدث خطأ أثناء الاتصال بالخادم: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
+      } catch (err: unknown) {
+        console.error('Error creating notification:', err);
+        alert(`حدث خطأ أثناء الاتصال بالخادم: ${err instanceof Error ? err.message : 'خطأ غير معروف'}`);
       }
     } catch (error) {
       console.error('Error in notification creation process:', error);
@@ -413,33 +417,79 @@ export default function NotificationsPage() {
     }
   };
 
-  // Generate paginated notifications
+  // Generate filtered notifications based on filter panel
+  const filteredNotifications = notifications.filter(n => {
+    if (filters.district && n.district?.toString() !== filters.district) return false;
+    if (filters.name && !n.name.includes(filters.name)) return false;
+    if (filters.startDate && (!n.date_created || new Date(n.date_created) < new Date(filters.startDate))) return false;
+    if (filters.endDate && (!n.date_created || new Date(n.date_created) > new Date(filters.endDate))) return false;
+    return true;
+  });
   const indexOfLastNotification = currentPage * notificationsPerPage;
   const indexOfFirstNotification = indexOfLastNotification - notificationsPerPage;
-  const currentNotifications = notifications.slice(indexOfFirstNotification, indexOfLastNotification);
-  const totalPages = Math.ceil(notifications.length / notificationsPerPage);
+  const currentNotifications = filteredNotifications.slice(indexOfFirstNotification, indexOfLastNotification);
+  const totalPages = Math.ceil(filteredNotifications.length / notificationsPerPage);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
       <main className="flex-1 p-8 mr-64">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">الإشعارات</h1>
-          {isAdmin && (
+          <div className="flex gap-2">
             <button 
-              onClick={() => setShowCreateModal(true)}
-              className="bg-[#4664AD] hover:bg-[#3A5499] text-white px-4 py-2 rounded-lg flex items-center gap-2"
+              onClick={() => setShowFilters(!showFilters)}
+              className="h-10 w-10 hover:bg-[#4664AD] text-[#4664AD] hover:text-[#F9FAFB] p-2 rounded-lg bg-[#F9FAFB] flex items-center justify-center"
             >
-              <FaPlus size={14} />
-              <span>إنشاء إشعار جديد</span>
+              <GrFilter />
             </button>
-          )}
+            {isAdmin && (
+              <button 
+                onClick={() => setShowCreateModal(true)}
+                className="bg-[#4664AD] hover:bg-[#3A5499] text-white px-4 py-2 rounded-lg flex items-center gap-2"
+              >
+                <FaPlus size={14} />
+                <span>إنشاء إشعار جديد</span>
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Filter Panel */}
+        {showFilters && (
+          <div className="bg-white p-4 rounded-lg shadow mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 text-right">المحافظة</label>
+                <select
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-right"
+                  value={filters.district}
+                  onChange={e => setFilters({...filters, district: e.target.value})}
+                >
+                  <option value="">كل المحافظات</option>
+                  {districts.map(d => (
+                    <option key={d.id} value={d.id.toString()}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 text-right">عنوان الإشعار</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded p-2 text-right"
+                  placeholder="ابحث بالعنوان"
+                  value={filters.name}
+                  onChange={e => setFilters({...filters, name: e.target.value})}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="text-xl text-gray-500">جاري تحميل البيانات...</div>
           </div>
-        ) : notifications.length === 0 ? (
+        ) : filteredNotifications.length === 0 ? (
           <div className="flex justify-center items-center h-64 flex-col">
             <div className="text-xl text-gray-500 mb-2">لا توجد إشعارات</div>
             {isAdmin && (
@@ -506,86 +556,74 @@ export default function NotificationsPage() {
                             console.log(`Notification ${notification.id} users:`, notification.users);
                             
                             // Handle users array - specifically looking for objects with Users_id property
-                            if (Array.isArray(notification.users)) {
-                              // Extract user IDs from the notification users array
-                              const userIds = notification.users.map((userObj: any) => {
-                                // For the specific format: {id: number, notification_id: number, Users_id: number}
-                                if (userObj && typeof userObj === 'object' && 'Users_id' in userObj) {
-                                  const userId = userObj.Users_id.toString();
-                                  console.log(`Found user object with Users_id: ${userId}`);
-                                  return userId;
-                                } 
-                                // Fallback for other possible formats
-                                else if (userObj && typeof userObj === 'object') {
-                                  const userId = (userObj.users_id || userObj.id).toString();
-                                  return userId;
+                            const userArray = Array.isArray(notification.users) ? notification.users : [];
+                            const userIds = (userArray as unknown[]).map((userObj) => {
+                              // Type guard to handle objects with numeric IDs
+                              if (typeof userObj === 'object' && userObj !== null) {
+                                const obj = userObj as Record<string, unknown>;
+                                if ('Users_id' in obj && typeof obj.Users_id === 'number') {
+                                  return obj.Users_id.toString();
                                 }
-                                // Direct ID case
-                                return userObj.toString();
-                              }).filter(Boolean);
-                              
-                              console.log('Extracted user IDs:', userIds);
-                              console.log('Available users:', users.map(u => `${u.id} (${u.full_name})`));
-                              
-                              if (userIds.length === 0) {
-                                return <span>لا يوجد مستخدمين محددين</span>;
+                                if ('users_id' in obj && (typeof obj.users_id === 'number' || typeof obj.users_id === 'string')) {
+                                  return obj.users_id.toString();
+                                }
+                                if ('id' in obj && (typeof obj.id === 'number' || typeof obj.id === 'string')) {
+                                  return obj.id.toString();
+                                }
                               }
-                              
-                              // Create a secondary lookup to debug the issue
-                              const userLookup: Record<string, User> = {};
-                              users.forEach(user => {
-                                userLookup[user.id.toString()] = user;
-                              });
-                              
-                              // Log the lookup keys to debug
-                              console.log('User lookup keys:', Object.keys(userLookup));
-                              
-                              return (
-                                <div className="flex flex-wrap gap-1">
-                                  {userIds.map((userId: string) => {
-                                    // Convert userId to string for consistency
-                                    const userIdStr = userId.toString();
-                                    
-                                    // Direct lookup from the object we created
-                                    const user = userLookup[userIdStr];
-                                    
-                                    // Additional debug logging
-                                    if (!user) {
-                                      console.warn(`No user found for ID ${userIdStr}. Looking for exact match in: ${users.map(u => u.id).join(', ')}`);
-                                      
-                                      // Try a direct search as a fallback
-                                      const directUser = users.find(u => u.id.toString() === userIdStr);
-                                      if (directUser) {
-                                        console.log(`Found user through direct search: ${directUser.full_name}`);
-                                        return (
-                                          <span key={userIdStr} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
-                                            {directUser.full_name}
-                                          </span>
-                                        );
-                                      }
-                                    }
-                                    
-                                    return (
-                                      <span key={userIdStr} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
-                                        {user ? user.full_name : `مستخدم #${userIdStr}`}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            } else if (notification.users) {
-                              // Handle non-array case (single user ID)
-                              const userId = notification.users.toString();
-                              const user = users.find(u => u.id.toString() === userId);
-                              
-                              return (
-                                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block">
-                                  {user ? user.full_name : `مستخدم #${userId}`}
-                                </span>
-                              );
-                            } else {
+                              // Fallback for string IDs
+                              return typeof userObj === 'string' ? userObj : '';
+                            }).filter(idStr => idStr !== '');
+                            
+                            console.log('Extracted user IDs:', userIds);
+                            console.log('Available users:', users.map(u => `${u.id} (${u.full_name})`));
+                            
+                            if (userIds.length === 0) {
                               return <span>لا يوجد مستخدمين محددين</span>;
                             }
+                            
+                            // Create a secondary lookup to debug the issue
+                            const userLookup: Record<string, User> = {};
+                            users.forEach(user => {
+                              userLookup[user.id.toString()] = user;
+                            });
+                            
+                            // Log the lookup keys to debug
+                            console.log('User lookup keys:', Object.keys(userLookup));
+                            
+                            return (
+                              <div className="flex flex-wrap gap-1">
+                                {userIds.map((userId: string) => {
+                                  // Convert userId to string for consistency
+                                  const userIdStr = userId.toString();
+                                  
+                                  // Direct lookup from the object we created
+                                  const user = userLookup[userIdStr];
+                                  
+                                  // Additional debug logging
+                                  if (!user) {
+                                    console.warn(`No user found for ID ${userIdStr}. Looking for exact match in: ${users.map(u => u.id).join(', ')}`);
+                                    
+                                    // Try a direct search as a fallback
+                                    const directUser = users.find(u => u.id.toString() === userIdStr);
+                                    if (directUser) {
+                                      console.log(`Found user through direct search: ${directUser.full_name}`);
+                                      return (
+                                        <span key={userIdStr} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
+                                          {directUser.full_name}
+                                        </span>
+                                      );
+                                    }
+                                  }
+                                  
+                                  return (
+                                    <span key={userIdStr} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
+                                      {user ? user.full_name : `مستخدم #${userIdStr}`}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
                           })()
                         ) : (
                           <span>لا يوجد مستخدم</span>
@@ -601,7 +639,7 @@ export default function NotificationsPage() {
             {totalPages > 1 && (
               <div className="mt-8 flex justify-between items-center">
                 <div className="text-sm text-gray-600">
-                  عرض {indexOfFirstNotification + 1} - {Math.min(indexOfLastNotification, notifications.length)} من {notifications.length} إشعار
+                  عرض {indexOfFirstNotification + 1} - {Math.min(indexOfLastNotification, filteredNotifications.length)} من {filteredNotifications.length} إشعار
                 </div>
                 <div className="flex gap-2">
                   <button 

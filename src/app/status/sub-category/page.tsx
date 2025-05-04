@@ -42,6 +42,8 @@ export default function StatusSubCategoryPage() {
   const [districts, setDistricts] = useState<District[]>([]);
   const [statusCategories, setStatusCategories] = useState<StatusCategory[]>([]);
   const [complaintSubCategories, setComplaintSubCategories] = useState<ComplaintSubCategory[]>([]);
+  const [filteredComplaintSubCategories, setFilteredComplaintSubCategories] = useState<ComplaintSubCategory[]>([]);
+  const [filteredNextStatusOptions, setFilteredNextStatusOptions] = useState<StatusSubCategoryWithDetails[]>([]);
   const [newSubCategory, setNewSubCategory] = useState({
     name: '',
     status_category: '',
@@ -54,6 +56,115 @@ export default function StatusSubCategoryPage() {
 
   // Add a state to track active district filtering
   const [activeDistrictFilter, setActiveDistrictFilter] = useState<string[]>([]);
+
+  // Function to fetch complaint subcategories by district ID
+  const fetchComplaintSubcategoriesByDistrict = async (districtId: string | number) => {
+    try {
+      console.log(`Fetching complaint subcategories for district ID: ${districtId}`);
+      // Make sure we're using a direct API call to avoid any permission issues
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        console.error('No auth token found');
+        return [];
+      }
+      
+      const response = await fetch(`https://complaint.top-wp.com/items/Complaint_sub_category?filter[district][_eq]=${districtId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        console.error(`Error fetching complaint subcategories: ${response.status}`);
+        return [];
+      }
+      
+      const data = await response.json();
+      
+      if (data && data.data) {
+        console.log(`Found ${data.data.length} complaint subcategories for district ${districtId}`);
+        return data.data;
+      } else {
+        console.warn(`No complaint subcategories found for district ${districtId}`);
+        return [];
+      }
+    } catch (error) {
+      console.error(`Error fetching complaint subcategories for district ${districtId}:`, error);
+      return [];
+    }
+  };
+
+  // Handle district selection change with immediate subcategory update
+  const handleDistrictChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newDistrictId = e.target.value;
+    console.log("Selected district changed to:", newDistrictId);
+    
+    // Update the form state with the new district
+    setNewSubCategory({ 
+      ...newSubCategory, 
+      district: newDistrictId,
+      // Reset complaint subcategory when district changes
+      complaint_subcategory: '',
+      // Also reset next status when district changes
+      nextstatus: ''
+    });
+    
+    // Immediately fetch and update the filtered subcategories
+    if (newDistrictId) {
+      const filteredData = await fetchComplaintSubcategoriesByDistrict(newDistrictId);
+      console.log("Setting filtered subcategories:", filteredData);
+      setFilteredComplaintSubCategories(filteredData);
+      
+      // Reset filtered next status options since district changed
+      setFilteredNextStatusOptions([]);
+    } else {
+      // If no district selected, show all subcategories
+      console.log("No district selected, showing all subcategories");
+      setFilteredComplaintSubCategories(complaintSubCategories);
+      setFilteredNextStatusOptions(subCategories);
+    }
+  };
+
+  // Effect to initialize filtered subcategories when complaint subcategories change
+  useEffect(() => {
+    // Initialize filtered with all subcategories when they're first loaded
+    if (complaintSubCategories.length > 0 && !newSubCategory.district) {
+      console.log("Initializing filtered subcategories with all subcategories:", complaintSubCategories);
+      setFilteredComplaintSubCategories(complaintSubCategories);
+    }
+  }, [complaintSubCategories, newSubCategory.district]);
+
+  // Let's add more detailed logging for dropdown state
+  useEffect(() => {
+    console.log("Current form state:", {
+      name: newSubCategory.name,
+      district: newSubCategory.district,
+      complaint_subcategory: newSubCategory.complaint_subcategory,
+      nextstatus: newSubCategory.nextstatus,
+      subcategories_count: filteredComplaintSubCategories.length
+    });
+  }, [newSubCategory, filteredComplaintSubCategories]);
+
+  // Effect to initialize filtered next status options on load
+  useEffect(() => {
+    // Initialize filtered next status options with all status subcategories
+    if (subCategories.length > 0 && !newSubCategory.complaint_subcategory) {
+      console.log("Initializing filtered next status options with all status subcategories:", subCategories);
+      setFilteredNextStatusOptions(subCategories);
+    }
+  }, [subCategories, newSubCategory.complaint_subcategory]);
+
+  // Let's add a debug effect to log when filterComplaintSubCategories changes
+  useEffect(() => {
+    console.log("Filtered complaint subcategories updated:", filteredComplaintSubCategories);
+  }, [filteredComplaintSubCategories]);
+
+  // Debug effect to log when filtered next status options change
+  useEffect(() => {
+    console.log("Filtered next status options updated:", filteredNextStatusOptions);
+  }, [filteredNextStatusOptions]);
 
   useEffect(() => {
     const userInfoStr = localStorage.getItem('user_info');
@@ -129,7 +240,7 @@ export default function StatusSubCategoryPage() {
       }
   
       if (res && res.data) {
-        let subCategoriesData = res.data;
+        const subCategoriesData = res.data;
   
         console.log(`Fetched ${subCategoriesData.length} subcategories`);
   
@@ -138,9 +249,14 @@ export default function StatusSubCategoryPage() {
         throw new Error('Failed to fetch subcategories');
       }
 
-      const complaintSubCategories = await fetchWithAuth('/items/Complaint_sub_category');
-      setComplaintSubCategories(complaintSubCategories.data);
-      console.log("complaintSubCategories", complaintSubCategories.data);
+      // Fetch complaint subcategories based on user's district or all if admin
+      const complaintSubCategoriesResponse = await fetchWithAuth(`/items/Complaint_sub_category?filter[district][_eq]=${district_id}`);
+      if (complaintSubCategoriesResponse && complaintSubCategoriesResponse.data) {
+        console.log("complaintSubCategories", complaintSubCategoriesResponse.data);
+        setComplaintSubCategories(complaintSubCategoriesResponse.data);
+        // Also set the filtered list initially to the same as all complaint subcategories
+        setFilteredComplaintSubCategories(complaintSubCategoriesResponse.data);
+      }
   
       setLoading(false);
     } catch (error) {
@@ -326,6 +442,112 @@ export default function StatusSubCategoryPage() {
     }
   };
 
+  // Function to fetch status subcategories filtered by complaint subcategory
+  const fetchNextStatusByComplaintSubcategory = async (complaintSubcategoryId: string | number) => {
+    try {
+      if (!complaintSubcategoryId) {
+        console.log("No complaint subcategory ID provided");
+        setFilteredNextStatusOptions(subCategories);
+        return;
+      }
+      
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        console.error('No auth token found');
+        return;
+      }
+
+      // Get the current selected district ID
+      const selectedDistrictId = newSubCategory.district;
+      
+      console.log(`Fetching next status options for complaint subcategory ID: ${complaintSubcategoryId} and district ID: ${selectedDistrictId || 'none'}`);
+      
+      // Log the first few subcategories to understand their structure
+      if (subCategories.length > 0) {
+        console.log("Example subcategory structure:", JSON.stringify(subCategories[0], null, 2));
+      }
+      
+      // Build URL with proper filtering - if we have a district, filter by both district and complaint subcategory
+      let url = `https://complaint.top-wp.com/items/Status_subcategory?filter[complaint_subcategory][_eq]=${complaintSubcategoryId}`;
+      
+      if (selectedDistrictId) {
+        url += `&filter[district][_eq]=${selectedDistrictId}`;
+      }
+      
+      // Add fields to include all related data
+      url += `&fields=*,complaint_subcategory.*,district.*,nextstatus.*,status_category.*`;
+      
+      console.log(`Making direct API request to: ${url}`);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        console.error(`Error fetching status subcategories: ${response.status}`);
+        setFilteredNextStatusOptions([]);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data && data.data && Array.isArray(data.data)) {
+        console.log(`Found ${data.data.length} matching next status options from API:`, data.data);
+        
+        // Make sure we have all fields needed for display
+        const processedOptions = data.data.map((option: any) => {
+          // Ensure the option has all required fields
+          return {
+            ...option,
+            id: option.id,
+            name: option.name || `Status ID: ${option.id}`,
+            district: option.district || null,
+            complaint_subcategory: option.complaint_subcategory || null
+          };
+        });
+        
+        setFilteredNextStatusOptions(processedOptions);
+        
+        // Reset next status selection
+        setNewSubCategory(prev => ({
+          ...prev,
+          nextstatus: ""
+        }));
+      } else {
+        console.warn(`No matching next status options found for complaint subcategory ID: ${complaintSubcategoryId} and district ID: ${selectedDistrictId || 'none'}`);
+        setFilteredNextStatusOptions([]);
+      }
+    } catch (error) {
+      console.error('Error fetching next status by complaint subcategory:', error);
+      setFilteredNextStatusOptions([]);
+    }
+  };
+
+  // Handler for complaint subcategory change
+  const handleComplaintSubcategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const complaintSubcategoryId = e.target.value;
+    console.log(`Complaint subcategory changed to: ${complaintSubcategoryId}`);
+    
+    // Update the form state with the selected complaint subcategory
+    setNewSubCategory(prev => ({
+      ...prev,
+      complaint_subcategory: complaintSubcategoryId,
+      nextstatus: "" // Reset next status when complaint subcategory changes
+    }));
+
+    // If a valid complaint subcategory is selected, fetch filtered next status options
+    if (complaintSubcategoryId) {
+      fetchNextStatusByComplaintSubcategory(complaintSubcategoryId);
+    } else {
+      // If no complaint subcategory is selected, reset to all status subcategories
+      setFilteredNextStatusOptions(subCategories);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 mr-64 flex justify-center items-center min-h-screen">
@@ -453,7 +675,7 @@ export default function StatusSubCategoryPage() {
                 </label>
                 <select
                   value={newSubCategory.district}
-                  onChange={(e) => setNewSubCategory({ ...newSubCategory, district: e.target.value })}
+                  onChange={handleDistrictChange}
                   className="w-full border border-gray-300 rounded-lg p-2"
                 >
                   <option value="">اختر المحافظة</option>
@@ -470,40 +692,60 @@ export default function StatusSubCategoryPage() {
                 {/* <p className='text-gray-500 rounded-lg p-2 w-full border border-gray-300'>{subCategories[0].district.name}</p> */}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                   الفئة الفرعية للشكوى
+              <div className="col-span-6 sm:col-span-3">
+                <label htmlFor="complaint_subcategory" className="block text-sm font-medium text-gray-700 mb-1">
+                  نوع الشكوى
                 </label>
                 <select
+                  id="complaint_subcategory"
+                  name="complaint_subcategory"
                   value={newSubCategory.complaint_subcategory}
-                  onChange={(e) => setNewSubCategory({ ...newSubCategory, complaint_subcategory: e.target.value })}
+                  onChange={handleComplaintSubcategoryChange}
                   className="w-full border border-gray-300 rounded-lg p-2"
+                  required={false}
                 >
-                  <option value="">اختر الفئة الرئيسية</option>
-                  {complaintSubCategories.map((subCategory) => (
-                    <option key={subCategory.id} value={subCategory.id}>  
-                      {subCategory.name}
-                    </option>
-                  ))}
+                  <option value="">اختر نوع الشكوى</option>
+                  {filteredComplaintSubCategories && filteredComplaintSubCategories.length > 0 ? (
+                    filteredComplaintSubCategories.map((subcategory) => (
+                      <option key={subcategory.id} value={subcategory.id}>
+                        {subcategory.name || `خيار ${subcategory.id}`}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>لا توجد خيارات متاحة</option>
+                  )}
                 </select>
+                {filteredComplaintSubCategories.length === 0 && (
+                  <p className="text-sm text-red-500 mt-1">الرجاء اختيار المحافظة أولاً</p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              <div className="col-span-6 sm:col-span-3">
+                <label htmlFor="nextstatus" className="block text-sm font-medium text-gray-700 mb-1">
                   الحالة التالية
                 </label>
                 <select
+                  id="nextstatus"
+                  name="nextstatus"
                   value={newSubCategory.nextstatus}
-                  onChange={(e) => setNewSubCategory({ ...newSubCategory, nextstatus: e.target.value })}
+                  onChange={(e) => setNewSubCategory(prev => ({ ...prev, nextstatus: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg p-2"
+                  required={false}
                 >
                   <option value="">اختر الحالة التالية</option>
-                  {subCategories.map((subCategory) => (
-                    <option key={subCategory.id} value={subCategory.id}>
-                      {subCategory.name}
-                    </option>
-                  ))}
+                  {filteredNextStatusOptions && filteredNextStatusOptions.length > 0 ? (
+                    filteredNextStatusOptions.map((subcategory) => (
+                      <option key={subcategory.id} value={subcategory.id}>
+                        {subcategory.name || `حالة ${subcategory.id}`}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>لا توجد خيارات متاحة</option>
+                  )}
                 </select>
+                {newSubCategory.complaint_subcategory && filteredNextStatusOptions.length === 0 && (
+                  <p className="text-sm text-yellow-500 mt-1">لا توجد حالات مرتبطة بنوع الشكوى المحدد</p>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 mt-4">

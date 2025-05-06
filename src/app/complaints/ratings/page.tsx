@@ -287,7 +287,7 @@ export default function RatingsPage() {
 
             <div className="mb-6 flex justify-between">
               <div className="text-xl font-semibold mb-3 text-right">
-                {item.Complaint?.title || 'شكوى رقم ' + item.Complaint.id}
+                {item.Complaint?.title || 'شكوى رقم ' + item?.Complaint?.id}
               </div>
               <div className="flex justify-end gap-1">
                 {renderStars(parseInt(item.rating_value))}

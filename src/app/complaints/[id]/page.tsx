@@ -104,7 +104,7 @@ interface ComplaintData {
   governorate_name: string;
   street_name_or_number: string;
   status_subcategory: number;
-  complaint_subcategory: number;
+  Complaint_Subcategory: number;
   district: number;
   completion_percentage: number;
   user: number | null;
@@ -741,7 +741,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
                 الفئة الفرعية للشكوى
               </label>
               <div className="w-full bg-gray-100 p-2 rounded text-right">
-                {complaintSubcategories[complaint?.complaint_subcategory || 0] || '—'}
+                {complaintSubcategories[complaint?.Complaint_Subcategory || 0] || '—'}
               </div>
             </div>
             
@@ -871,7 +871,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             <Field label="المحافظة" value={districts[complaint?.district || 0] || null} />
             <Field label="رقم أو اسم الشارع" value={complaint?.street_name_or_number || null} />
             <Field label="القضاء" value={complaint?.governorate_name || null} />
-            <Field label="الفئة الفرعية للشكوى" value={complaintSubcategories[complaint?.complaint_subcategory || 0] || null} />
+            <Field label="الفئة الفرعية للشكوى" value={complaintSubcategories[complaint?.Complaint_Subcategory || 0] || null} />
             <Field label="الفئة الفرعية للحالة" value={statusSubcategories[complaint?.status_subcategory || 0] || null} />
             {complaint && !isEditing && (
               <ComplaintPercentageCalculator complaintId={complaint.id} />

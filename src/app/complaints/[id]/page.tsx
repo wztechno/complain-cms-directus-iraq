@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/utils/api';
 import { getUserPermissions, hasPermission, complaintMatchesPermissions } from '@/utils/permissions';
 import ComplaintMedia from '@/components/ComplaintMedia';
+import ComplaintPercentageCalculator from './ComplaintPercentageCalculator';
 
 // Utility function to get the correct media URL based on file type
 const getMediaUrl = (fileId: string, fileType: string): string => {
@@ -103,7 +104,7 @@ interface ComplaintData {
   governorate_name: string;
   street_name_or_number: string;
   status_subcategory: number;
-  Complaint_Subcategory: number;
+  complaint_subcategory: number;
   district: number;
   completion_percentage: number;
   user: number | null;
@@ -119,6 +120,18 @@ interface ComplaintData {
   audios?: AudioFile[];
   processedFiles?: FileFile[];
 }
+
+// Field component definition at the end of the file
+const Field = ({ label, value }: { label: string; value: string | number | null }) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+      {label}
+    </label>
+    <div className="bg-gray-100 p-2 rounded text-right">
+      {value ?? '—'}
+    </div>
+  </div>
+);
 
 export default function ComplaintPage({ params }: { params: { id: string } }) {
   const [complaint, setComplaint] = useState<ComplaintData | null>(null);
@@ -397,6 +410,14 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       setComplaintSubcategories(Object.fromEntries(complaintSubcategoriesData.data.map((s: any) => [s.id, s.name])));
       setLoading(false);
 
+      // If we're in edit mode, update the edit form with the latest percentage value
+      if (isEditing) {
+        setEditForm(prev => ({
+          ...prev,
+          completion_percentage: complaintWithMedia.completion_percentage || 0
+        }));
+      }
+
       // In the fetchData function, add logging to see what's coming back from the API
       if (complaintRes?.data) {
         console.log('Received complaint data from API:', {
@@ -416,8 +437,28 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
     if (!complaint?.id) return;
     
     try {
-      setIsUpdating(true);
+      setIsUpdating(true); // Use updating state for the save operation
       
+      // Get the latest percentage value before saving
+      try {
+        const latestData = await fetchWithAuth(
+          `/items/Complaint/${complaint.id}?fields=completion_percentage&t=${Date.now()}`
+        );
+        
+        if (latestData?.data && latestData.data.completion_percentage !== undefined) {
+          // Update form with latest percentage
+          setEditForm(prev => ({
+            ...prev,
+            completion_percentage: latestData.data.completion_percentage
+          }));
+          console.log(`Updated to latest percentage before save: ${latestData.data.completion_percentage}%`);
+        }
+      } catch (refreshError) {
+        console.error('Error refreshing percentage before save:', refreshError);
+        // Continue with save even if refresh fails
+      }
+      
+      // The rest of the save function remains unchanged
       // Update data for the complaint
       const updateData = {
         status_subcategory: editForm.status_subcategory,
@@ -476,12 +517,22 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         }
         
         try {
-          // Refresh the whole complaint data to get the latest state
+          // Trigger an immediate refresh after save
+          const refreshRes = await fetchWithAuth(`/items/Complaint/${complaint.id}?fields=completion_percentage&t=${Date.now()}`);
+          if (refreshRes?.data && refreshRes.data.completion_percentage !== undefined) {
+            setComplaint(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                completion_percentage: refreshRes.data.completion_percentage
+              };
+            });
+          }
+          
+          // Then refresh the whole complaint data
           await fetchData();
         } catch (fetchError) {
           console.error('Error refreshing data after update:', fetchError);
-        } finally {
-          setIsUpdating(false);
         }
       } else {
         throw new Error('Failed to update complaint');
@@ -489,6 +540,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
     } catch (error) {
       console.error('Error updating complaint:', error);
       alert('حدث خطأ أثناء تحديث حالة الشكوى');
+    } finally {
       setIsUpdating(false);
     }
   };
@@ -609,6 +661,21 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
                       console.error('Error fetching status subcategory done field:', err);
                     });
                 }
+                
+                // Also immediately fetch the latest percentage value from the server
+                fetchWithAuth(`/items/Complaint/${complaint?.id}?fields=completion_percentage`)
+                  .then(response => {
+                    if (response && response.data && response.data.completion_percentage !== undefined) {
+                      setEditForm(prev => ({
+                        ...prev,
+                        completion_percentage: response.data.completion_percentage
+                      }));
+                      console.log('Updated percentage value on edit start:', response.data.completion_percentage);
+                    }
+                  })
+                  .catch(err => {
+                    console.error('Error fetching latest percentage value:', err);
+                  });
                 
                 setIsEditing(true);
               }
@@ -751,19 +818,17 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
-                نسبة الإنجاز
+                نسبة الإنجاز (تُحدّث تلقائياً)
               </label>
-              <div className="w-full flex items-center">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={editForm.completion_percentage || 0}
-                  onChange={(e) => setEditForm({...editForm, completion_percentage: Number(e.target.value)})}
-                  className="w-full border border-gray-300 p-2 rounded text-right"
-                />
-                <span className="mr-2">%</span>
-              </div>
+              {complaint && isEditing && (
+                <ComplaintPercentageCalculator complaintId={complaint.id} />
+              )}
+              {/* <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="h-2 rounded-full bg-[#4664AD] transition-all duration-300 ease-in-out"
+                  style={{ width: `${complaint?.completion_percentage || 0}%` }}
+                ></div>
+              </div> */}
             </div>
             
             <div className="md:col-span-2">
@@ -808,7 +873,9 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             <Field label="القضاء" value={complaint?.governorate_name || null} />
             <Field label="الفئة الفرعية للشكوى" value={complaintSubcategories[complaint?.Complaint_Subcategory || 0] || null} />
             <Field label="الفئة الفرعية للحالة" value={statusSubcategories[complaint?.status_subcategory || 0] || null} />
-            
+            {complaint && !isEditing && (
+              <ComplaintPercentageCalculator complaintId={complaint.id} />
+            )}
             {/* Status done indicator in view mode */}
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
@@ -826,7 +893,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
               </div>
             </div>
             
-            <Field label="نسبة الإنجاز" value={`${complaint?.completion_percentage || 0}%`} />
+            {/* <Field label="نسبة الإنجاز" value={`${complaint?.completion_percentage || 0}%`} /> */}
             <Field label="ملاحظة" value={`${complaint?.note || ''}`} />
           </div>
         </div>
@@ -845,14 +912,3 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
     </div>
   );
 }
-
-const Field = ({ label, value }: { label: string; value: string | number | null }) => (
-  <div>
-    <label className="block text-sm font-medium text-gray-700 text-right mb-1">
-      {label}
-    </label>
-    <div className="bg-gray-100 p-2 rounded text-right">
-      {value ?? '—'}
-    </div>
-  </div>
-);

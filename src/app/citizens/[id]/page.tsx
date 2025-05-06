@@ -121,7 +121,7 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
         name: notification.name,
         content: notification.content,
         users: {
-          create: [{ id: parseInt(params.id, 10) }],
+          create: [{ Users_id: parseInt(params.id, 10) }],
           delete: []
         }
       };
@@ -203,7 +203,7 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
             </div>
           </div>
           
-          {isAdmin && (
+          {/* {isAdmin && ( */}
             <button 
               onClick={() => setShowNotificationModal(true)}
               className="bg-[#4664AD] hover:bg-[#3A5499] text-white px-4 py-2 rounded-lg flex items-center gap-2"
@@ -211,7 +211,7 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
               <FaBell size={14} />
               <span>إرسال إشعار</span>
             </button>
-          )}
+          {/* )} */}
         </div>
 
         {/* Notification Modal */}

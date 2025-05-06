@@ -33,6 +33,7 @@ export default function CitizensPage() {
   const [loading, setLoading] = useState(true);
   const [loadingStats, setLoadingStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const router = useRouter();
 
   const [filters, setFilters] = useState({
@@ -101,6 +102,9 @@ export default function CitizensPage() {
               const ratingsData = await ratingsRes.json();
               const notificationsData = await notificationsRes;
 
+              if (notificationsData.data?.length > 0) {
+                setShowNotifications(true);
+              }
               // Add statistics to user object
               return {
                 ...user,
@@ -342,8 +346,8 @@ export default function CitizensPage() {
                 المحافظة: {districtMap[user.district] || 'غير معروفة'}
               </p>
             )}
-            
             {/* User Statistics Section */}
+            {showNotifications && (
             <div className="mt-4 pt-4 border-t border-gray-200">
               <h4 className="text-sm font-medium text-gray-700 mb-2 text-right">الإحصائيات</h4>
               {loadingStats ? (
@@ -367,6 +371,7 @@ export default function CitizensPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         ))}
       </div>

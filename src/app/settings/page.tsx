@@ -91,9 +91,11 @@ const createEmptyCollectionPermissions = (): CollectionPermissions => {
     Status_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Status_subcategory: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Users: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-    user_policies: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-    directus_policies: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-    directus_permissions: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
+    notification: { create: true, read: true, update: false, delete: false, share: false, customConditions: {} },
+    notification_users: { create: true, read: true, update: false, delete: false, share: false, customConditions: {} },
+    user_policies: { create: true, read: true, update: true, delete: true, share: true, customConditions: {} },
+    directus_policies: { create: true, read: true, update: true, delete: true, share: true, customConditions: {} },
+    directus_permissions: { create: true, read: true, update: true, delete: true, share: true, customConditions: {} },
   };
 };
 
@@ -795,7 +797,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div>
+              {/* <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
                   الدور
                 </label>
@@ -812,7 +814,7 @@ export default function SettingsPage() {
                     </option>
                   ))}
                 </select>
-              </div>
+              </div> */}
 
               {/* User Assignment Section */}
               <div className="border rounded-lg p-6 mb-6 bg-white">
@@ -909,6 +911,8 @@ export default function SettingsPage() {
                     { name: 'user_policies', label: 'السياسات المخصصة للمستخدم', hasCustom: false },
                     { name: 'directus_policies', label: 'السياسات', hasCustom: false },
                     { name: 'directus_permissions', label: 'الصلاحيات', hasCustom: false },
+                    { name: 'notification', label: 'الإشعارات', hasCustom: false },
+                    { name: 'notification_users', label: 'المستخدمين المشتركين في الإشعارات', hasCustom: false },
                   ].map((collection) => (
                     <div key={collection.name} className="grid grid-cols-12 gap-4 items-center">
                       <div className="col-span-4 text-right">{collection.label}</div>

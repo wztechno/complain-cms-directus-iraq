@@ -144,6 +144,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
   const [nextStatusOptions, setNextStatusOptions] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timelineId, setTimelineId] = useState<number | null>(null);
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ComplaintData & { is_done?: boolean }>>({});
@@ -164,6 +165,16 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         setError('ليس لديك صلاحية لعرض هذه الشكوى');
         setLoading(false);
         return;
+      }
+
+      // Fetch timeline ID first
+      try {
+        const timelineRes = await fetchWithAuth(`/items/ComplaintTimeline?fields=id&filter[complaint_id][_eq]=${params.id}`);
+        if (timelineRes?.data && timelineRes.data.length > 0) {
+          setTimelineId(timelineRes.data[0].id);
+        }
+      } catch (timelineError) {
+        console.error('Error fetching timeline ID:', timelineError);
       }
 
       // First fetch the complaint data
@@ -920,13 +931,13 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             <Field label="ملاحظة" value={`${complaint?.note || ''}`} />
           </div>
           <div className="mt-8 flex justify-end">
-          <button
-            onClick={() => router.push(`/timeline`)}
-            className="bg-[#4664AD] text-white px-6 py-2 rounded-lg hover:bg-[#3A5499]"
-          >
-            الانتقال الى الحالة الزمنية
-          </button>
-        </div>
+            <button
+              onClick={() => timelineId ? router.push(`/timeline/${timelineId}`) : router.push('/timeline')}
+              className="bg-[#4664AD] text-white px-6 py-2 rounded-lg hover:bg-[#3A5499]"
+            >
+              الانتقال الى الحالة الزمنية
+            </button>
+          </div>
         </div>
       )}
 

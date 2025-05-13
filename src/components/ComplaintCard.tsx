@@ -55,7 +55,7 @@ const ComplaintCard = ({
       onClick={handleCardClick}
     >
       <div className="flex justify-between items-start mb-4">
-        <div className="text-gray-500">{type}</div>
+        <div className="text-gray-500">{id} - {type}</div>
         <div className="relative">
           <button 
             className="text-gray-400 hover:text-gray-600"

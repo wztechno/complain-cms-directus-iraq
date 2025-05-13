@@ -26,7 +26,8 @@ export default function TimelinePage() {
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
-    status: ''
+    status: '',
+    complaintId: ''
   });
 
   useEffect(() => {
@@ -90,6 +91,12 @@ export default function TimelinePage() {
   const handleFilter = () => {
     let filtered = [...complaints];
 
+    if (filters.complaintId) {
+      filtered = filtered.filter(complaint => 
+        complaint.complaint_id.toString().includes(filters.complaintId)
+      );
+    }
+
     if (filters.status) {
       filtered = filtered.filter(complaint => complaint.status_subcategory === filters.status);
     }
@@ -146,7 +153,19 @@ export default function TimelinePage() {
 
       {showFilters && (
         <div className="mb-6 bg-white p-4 rounded-lg shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                رقم الشكوى
+              </label>
+              <input
+                type="text"
+                value={filters.complaintId}
+                onChange={(e) => setFilters({ ...filters, complaintId: e.target.value })}
+                placeholder="ابحث برقم الشكوى"
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 الحالة
@@ -198,8 +217,9 @@ export default function TimelinePage() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">رقم الشكوى</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">الشكوى</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">المستخدم</th>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">المواطن</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">الحالة</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">تاريخ الحالة</th>
               </tr>

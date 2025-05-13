@@ -1,7 +1,8 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { fetchWithAuth } from '@/utils/api';
-import { BsFilter, BsPersonFill } from 'react-icons/bs';
+import { BsFilter, BsPersonFill, BsChevronDown } from 'react-icons/bs';
+import { GrFilter } from 'react-icons/gr';
 
 interface Role {
   id: string;
@@ -113,6 +114,8 @@ export default function SettingsPage() {
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [pageSearchQuery, setPageSearchQuery] = useState('');
   const [newPolicy, setNewPolicy] = useState({
     name: '',
     description: '',
@@ -128,7 +131,9 @@ export default function SettingsPage() {
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [customConditionValue, setCustomConditionValue] = useState('');
   const [customConditionValue2, setCustomConditionValue2] = useState('');
-
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     fetchInitialData();
@@ -649,9 +654,73 @@ export default function SettingsPage() {
     setShowCustomConditionsModal(false);
   };
 
-  // Function to get available users (not already selected)
+  // Function to get available users (not already selected) with search filter
   const getAvailableUsers = () => {
-    return users.filter(user => !selectedUsers.includes(user.id));
+    if (!searchQuery.trim()) {
+      return users.filter(user => !selectedUsers.includes(user.id));
+    }
+
+    const searchLower = searchQuery.toLowerCase().trim();
+    return users
+      .filter(user => !selectedUsers.includes(user.id))
+      .filter(user => {
+        const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        return fullName.includes(searchLower) || email.includes(searchLower);
+      });
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleUserSelect = (userId: string) => {
+    setSelectedUsers([...selectedUsers, userId]);
+    setSearchQuery('');
+    setIsDropdownOpen(false);
+  };
+
+  // Function to filter policies based on search query
+  const getFilteredPolicies = () => {
+    if (!pageSearchQuery.trim()) {
+      return policies;
+    }
+
+    const searchLower = pageSearchQuery.toLowerCase().trim();
+    return policies.filter(policy => {
+      // Get users for this policy
+      const policyUsers = userPolicies
+        .filter(up => up.policy_id.includes(policy.id))
+        .flatMap(up => up.user_id)
+        .map(userId => users.find(user => user.id === userId))
+        .filter(Boolean) as User[];
+
+      // Check if any user matches the search
+      const hasMatchingUser = policyUsers.some(user => {
+        const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        return fullName.includes(searchLower) || email.includes(searchLower);
+      });
+
+      // Check if policy name or description matches
+      const policyMatches = 
+        policy.name.toLowerCase().includes(searchLower) ||
+        (policy.description?.toLowerCase().includes(searchLower) ?? false);
+
+      return hasMatchingUser || policyMatches;
+    });
   };
 
   if (loading) {
@@ -669,6 +738,12 @@ export default function SettingsPage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-2xl font-bold">السياسات</h1>
           <div className="flex gap-3">
+          <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className="h-10 w-10 hover:bg-[#4664AD] text-[#4664AD] hover:text-[#F9FAFB] p-2 rounded-lg bg-[#F9FAFB] flex items-center justify-center"
+            >
+              <GrFilter />
+          </button>
             <button 
               onClick={() => {
                 setIsEditing(false);
@@ -696,8 +771,32 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Search Bar */}
+        {showFilters && (
+        <div className="mb-6">
+          <div className="relative">
+            <input
+              type="text"
+              value={pageSearchQuery}
+              onChange={(e) => setPageSearchQuery(e.target.value)}
+              placeholder="ابحث عن سياسة أو مستخدم..."
+              className="w-full border border-gray-300 rounded-lg p-2 pr-10 text-right"
+              dir="rtl"
+            />
+            {pageSearchQuery && (
+              <button
+                onClick={() => setPageSearchQuery('')}
+                className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {policies.map((policy) => {
+          {getFilteredPolicies().map((policy) => {
             // Get users assigned to this policy through user_policies
             const policyUsers = userPolicies
               .filter(up => up.policy_id.includes(policy.id))
@@ -717,9 +816,9 @@ export default function SettingsPage() {
                   >
                     تعديل
                   </button>
-                  <span className="text-sm text-gray-500">
+                  {/* <span className="text-sm text-gray-500">
                     {new Date(policy.created_at || '').toLocaleDateString('ar-EG')}
-                  </span>
+                  </span> */}
                 </div>
 
                 <div className="flex justify-between items-center mb-4">
@@ -821,31 +920,46 @@ export default function SettingsPage() {
                 <h3 className="text-xl font-semibold mb-4 text-right">تعيين المستخدمين</h3>
                 
                 <div className="space-y-4">
-                  {/* Add User Dropdown */}
-                  <div className="flex items-center gap-4">
-                    <select
-                      className="flex-1 border border-gray-300 rounded-lg p-2 text-right"
-                      dir="rtl"
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setSelectedUsers([...selectedUsers, e.target.value]);
-                          e.target.value = ''; // Reset the dropdown
-                        }
-                      }}
+                  {/* Searchable Dropdown */}
+                  <div className="relative" ref={dropdownRef}>
+                    <div 
+                      className="flex items-center justify-between border border-gray-300 rounded-lg p-2 cursor-pointer"
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                     >
-                      <option value="">اختر مستخدم لإضافته</option>
-                      {getAvailableUsers().map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.first_name} {user.last_name} ({user.email})
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleAddUserToPolicy}
-                      className="bg-[#4664AD] text-white px-4 py-2 rounded-lg text-sm"
-                    >
-                      إضافة مستخدم
-                    </button>
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setIsDropdownOpen(true);
+                        }}
+                        placeholder="ابحث عن مستخدم..."
+                        className="w-full border-none focus:outline-none text-right"
+                        dir="rtl"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <BsChevronDown className={`transform transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                    </div>
+
+                    {isDropdownOpen && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {getAvailableUsers().length > 0 ? (
+                          getAvailableUsers().map((user) => (
+                            <div
+                              key={user.id}
+                              className="p-2 hover:bg-gray-100 cursor-pointer text-right"
+                              onClick={() => handleUserSelect(user.id)}
+                            >
+                              {user.first_name} {user.last_name} ({user.email})
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-2 text-right text-gray-500">
+                            لا يوجد مستخدمين
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* List of assigned users */}

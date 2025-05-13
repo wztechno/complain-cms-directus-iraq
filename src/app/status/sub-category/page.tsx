@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/utils/api';
 import { getUserPermissions } from '@/utils/permissions';
+import { GrFilter } from 'react-icons/gr';
 
 interface StatusSubCategory {
   id: number;
@@ -53,9 +54,12 @@ export default function StatusSubCategoryPage() {
   });
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
+  const [showFilters, setShowFilters] = useState(false);
+
 
   // Add a state to track active district filtering
   const [activeDistrictFilter, setActiveDistrictFilter] = useState<string[]>([]);
+  const [activeStatusCategoryFilter, setActiveStatusCategoryFilter] = useState<string>('');
 
   // Function to fetch complaint subcategories by district ID
   const fetchComplaintSubcategoriesByDistrict = async (districtId: string | number) => {
@@ -272,8 +276,9 @@ export default function StatusSubCategoryPage() {
       const userInfoStr = localStorage.getItem('user_info');
       const userInfo = userInfoStr ? JSON.parse(userInfoStr) : null;
       const userPermissions = await getUserPermissions();
+      // const isAdmin = userPermissions.isAdmin;
       
-      const res = await fetchWithAuth('/items/District');
+      const res = await fetchWithAuth('/items/District?filter[active][_eq]=true');
       if (res && res.data) {
         let districtsData = res.data;
         
@@ -561,6 +566,18 @@ export default function StatusSubCategoryPage() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">الفئة الفرعية للحالة</h1>
         <div className="flex gap-4">
+          <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className="h-10 w-10 hover:bg-[#4664AD] text-[#4664AD] hover:text-[#F9FAFB] p-2 rounded-lg bg-[#F9FAFB] flex items-center justify-center"
+            >
+              <GrFilter />
+          </button>
+          <button 
+            onClick={() => setShowAddSubCategory(true)}
+            className="bg-[#4664AD] hover:bg-[#F9FAFB] hover:text-[#4664AD] text-[#F9FAFB] px-4 py-2 rounded-lg flex items-center gap-2"
+            >
+            إضافة فئة فرعية جديدة
+          </button>
           <button
             onClick={handleExport}
             className="bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499]"
@@ -569,6 +586,32 @@ export default function StatusSubCategoryPage() {
           </button>
         </div>
       </div>
+
+      {/* Filters Section */}
+      {showFilters && (   
+        <div className="mb-6 bg-white p-4 rounded-lg shadow">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Status Category Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              الفئة الرئيسية
+            </label>
+            <select
+              value={activeStatusCategoryFilter}
+              onChange={(e) => setActiveStatusCategoryFilter(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg p-2"
+            >
+              <option value="">جميع الفئات</option>
+              {statusCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+      )}
 
       {activeDistrictFilter.length > 0 && (
         <div className="mb-6 bg-blue-50 p-3 rounded-lg border border-blue-100">
@@ -589,7 +632,15 @@ export default function StatusSubCategoryPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {subCategories.map((subCategory) => (
+        {subCategories
+          .filter(subCategory => {
+            // Apply status category filter
+            if (activeStatusCategoryFilter && subCategory.status_category?.id !== Number(activeStatusCategoryFilter)) {
+              return false;
+            }
+            return true;
+          })
+          .map((subCategory) => (
           <div 
             key={subCategory.id} 
             className="bg-white rounded-lg shadow-md p-6 cursor-pointer hover:shadow-lg transition-shadow duration-200"
@@ -621,14 +672,14 @@ export default function StatusSubCategoryPage() {
         ))}
       </div>
 
-      <div className="mt-8">
+      {/* <div className="mt-8">
         <button 
           onClick={() => setShowAddSubCategory(true)}
           className="w-full bg-[#4664AD] text-white py-3 rounded-lg text-lg hover:bg-[#3A5499] transition-colors"
         >
           إضافة فئة فرعية جديدة
         </button>
-      </div>
+      </div> */}
 
       {showAddSubCategory && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

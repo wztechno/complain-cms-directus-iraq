@@ -107,7 +107,9 @@ interface ComplaintData {
   Complaint_Subcategory: number;
   district: number;
   completion_percentage: number;
-  user: number | null;
+  user: {
+    full_name: string;
+  }
   note: string;
   // Media file IDs
   image?: string | null;
@@ -139,6 +141,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
   const [subcategories, setSubcategories] = useState<Record<number, string>>({});
   const [complaintSubcategories, setComplaintSubcategories] = useState<Record<number, string>>({});
   const [statusSubcategories, setStatusSubcategories] = useState<Record<number, string>>({});
+  const [nextStatusOptions, setNextStatusOptions] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -164,7 +167,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       }
 
       // First fetch the complaint data
-      const complaintRes = await fetchWithAuth(`/items/Complaint/${params.id}`);
+      const complaintRes = await fetchWithAuth(`/items/Complaint/${params.id}?fields=*,user.*`);
       
       if (!complaintRes?.data) {
         setError('لم يتم العثور على الشكوى');
@@ -199,6 +202,19 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
 
       const complaintSubcategoriesData = await complaintSubcategoriesRes?.json();
       const data = complaintRes.data;
+
+      // If we have a current status, fetch its next status options
+      if (data.status_subcategory) {
+        try {
+          const nextStatusRes = await fetchWithAuth(`/items/Status_subcategory/${data.status_subcategory}?fields=nextstatus.*`);
+          if (nextStatusRes?.data?.nextstatus) {
+            const nextStatus = nextStatusRes.data.nextstatus;
+            setNextStatusOptions({ [nextStatus.id]: nextStatus.name });
+          }
+        } catch (error) {
+          console.error('Error fetching next status options:', error);
+        }
+      }
 
       console.log("data: ", subcategoriesRes);
       // Process media files (if they exist)
@@ -755,27 +771,33 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
                   const newStatusId = Number(e.target.value);
                   setEditForm({...editForm, status_subcategory: newStatusId});
                   
-                  // If a valid status is selected, fetch its current "done" status
+                  // If a valid status is selected, fetch its current "done" status and next status options
                   if (newStatusId) {
-                    fetchWithAuth(`/items/Status_subcategory/${newStatusId}`)
-                      .then(response => {
-                        if (response && response.data && response.data.done !== undefined) {
-                          // Update the is_done field with the actual value from the server
-                          setEditForm(prev => ({
-                            ...prev,
-                            is_done: response.data.done
-                          }));
-                        }
-                      })
-                      .catch(err => {
-                        console.error('Error fetching status subcategory done field:', err);
-                      });
+                    Promise.all([
+                      fetchWithAuth(`/items/Status_subcategory/${newStatusId}?fields=nextstatus.*`)
+                    ]).then(([statusRes]) => {
+                      if (statusRes?.data?.done !== undefined) {
+                        setEditForm(prev => ({
+                          ...prev,
+                          is_done: statusRes.data.done
+                        }));
+                      }
+                      
+                      if (statusRes?.data?.nextstatus) {
+                        const nextStatus = statusRes.data.nextstatus;
+                        setNextStatusOptions({ [nextStatus.id]: nextStatus.name });
+                      } else {
+                        setNextStatusOptions({});
+                      }
+                    }).catch(err => {
+                      console.error('Error fetching status details:', err);
+                    });
                   }
                 }}
                 className="w-full border border-gray-300 p-2 rounded text-right"
               >
                 <option value="">اختر الحالة</option>
-                {Object.entries(statusSubcategories).map(([id, name]) => (
+                {Object.entries(nextStatusOptions).map(([id, name]) => (
                   <option key={id} value={id}>
                     {name}
                   </option>
@@ -869,6 +891,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             <Field label="وصف الشكوى" value={complaint?.description || null} />
             <Field label="نوع الخدمة" value={complaint?.Service_type || null} />
             <Field label="المحافظة" value={districts[complaint?.district || 0] || null} />
+            <Field label="المواطن" value={complaint?.user?.full_name || null} />
             <Field label="رقم أو اسم الشارع" value={complaint?.street_name_or_number || null} />
             <Field label="القضاء" value={complaint?.governorate_name || null} />
             <Field label="الفئة الفرعية للشكوى" value={complaintSubcategories[complaint?.Complaint_Subcategory || 0] || null} />
@@ -896,6 +919,14 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
             {/* <Field label="نسبة الإنجاز" value={`${complaint?.completion_percentage || 0}%`} /> */}
             <Field label="ملاحظة" value={`${complaint?.note || ''}`} />
           </div>
+          <div className="mt-8 flex justify-end">
+          <button
+            onClick={() => router.push(`/timeline`)}
+            className="bg-[#4664AD] text-white px-6 py-2 rounded-lg hover:bg-[#3A5499]"
+          >
+            الانتقال الى الحالة الزمنية
+          </button>
+        </div>
         </div>
       )}
 

@@ -62,7 +62,8 @@ export default function ComplaintsPage() {
     endDate: '',
     serviceType: '',
     status:'',
-    compelation_percentage:''
+    compelation_percentage:'',
+    id: ''
   });
 
   useEffect(() => {
@@ -385,6 +386,14 @@ export default function ComplaintsPage() {
       let filtered = [...complaints];
       console.log(`Filtering from ${complaints.length} complaints`);
 
+      // Add ID filter
+      if (filters.id) {
+        filtered = filtered.filter(complaint => 
+          complaint.id.toString().includes(filters.id)
+        );
+        console.log(`After ID filter (${filters.id}): ${filtered.length} complaints`);
+      }
+
       if (filters.governorate) {
         filtered = filtered.filter(complaint => {
           if (!complaint.districtName) return false;
@@ -405,9 +414,9 @@ export default function ComplaintsPage() {
         filtered = filtered.filter(complaint => {
           // Match the complaint's Service_type against our two categories
           if (filters.serviceType === 'خدمات فردية') {
-            return complaint.Service_type === 'خدمات فردية' || complaint.Service_type === 'individual';
+            return complaint.Service_type === 'خدمات فردية';
           } else if (filters.serviceType === 'خدمات عامة') {
-            return complaint.Service_type === 'خدمات عامة' || complaint.Service_type === 'public';
+            return complaint.Service_type === 'خدمات عامة';
           }
           return complaint.Service_type === filters.serviceType;
         });
@@ -669,6 +678,18 @@ export default function ComplaintsPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                  رقم الشكوى
+                </label>
+                <input
+                  type="text"
+                  value={filters.id}
+                  onChange={(e) => setFilters({ ...filters, id: e.target.value })}
+                  placeholder="ابحث برقم الشكوى"
+                  className="w-full border border-gray-300 rounded-md p-2 text-right"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                   فئة الشكوى
                 </label>
                 <select
@@ -746,8 +767,8 @@ export default function ComplaintsPage() {
                   className="w-full border border-gray-300 rounded-md p-2 text-right"
                 >
                   <option value="">الكل</option>
-                  <option value="خدمات فردية">خدمات فردية (Individual Services)</option>
-                  <option value="خدمات عامة">خدمات عامة (Public Services)</option>
+                  <option value="خدمات فردية">خدمات فردية</option>
+                  <option value="خدمات عامة">خدمات عامة</option>
                 </select>
               </div>
 

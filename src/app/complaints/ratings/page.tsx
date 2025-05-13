@@ -60,41 +60,42 @@ export default function RatingsPage() {
 
   const fetchRatings = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint_ratings?fields=*,Complaint.*,user.*');
+      const res = await fetch('https://complaint.top-wp.com/items/Complaint_ratings?fields=*,Complaint.*');
       if (!res.ok) {
         throw new Error('Failed to fetch ratings');
       }
       const data = await res.json();
-      
+      console.log("data", data);
       // Fetch both complaint and user details for each rating
-      const ratingsWithDetails = await Promise.all(
-        data.data.map(async (rating: Rating) => {
-          const details: RatingWithDetails = { ...rating };
+      // const ratingsWithDetails = await Promise.all(
+      //   data.data.map(async (rating: Rating) => {
+      //     const details: RatingWithDetails = { ...rating };
           
-          try {
-            // Fetch complaint details
-            const complaintRes = await fetchWithAuth(`/items/Complaint/${rating.Complaint.id}`);
-            if (complaintRes.ok) {
-              const complaintData = await complaintRes.json();
-              details.complaintDetails = complaintData.data;
-            }
+      //     try {
+      //       // Fetch complaint details
+      //       const complaintRes = await fetchWithAuth(`/items/Complaint/${rating.Complaint.id}`);
+      //       if (complaintRes.ok) {
+      //         const complaintData = await complaintRes.json();
+      //         details.complaintDetails = complaintData.data;
+      //       }
 
-            // Fetch user details
-            const userRes = await fetchWithAuth(`/items/Users/${rating.user}`);
-            if (userRes.ok) {
-              const userData = await userRes.json();
-              details.userDetails = userData.data;
-            }
-          } catch (error) {
-            console.error('Error fetching details:', error);
-          }
+      //       // Fetch user details
+      //       const userRes = await fetchWithAuth(`/items/Users/${rating.user}`);
+      //       if (userRes.ok) {
+      //         const userData = await userRes.json();
+      //         details.userDetails = userData.data;
+      //       }
+      //     } catch (error) {
+      //       console.error('Error fetching details:', error);
+      //     }
           
-          return details;
-        })
-      );
+      //     return details;
+      //   })
+      // );
 
-      setRatings(ratingsWithDetails);
-      setFilteredRatings(ratingsWithDetails);
+      setRatings(data.data);
+      setFilteredRatings(data.data);
+      console.log("filteredRatings", filteredRatings);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching ratings:', error);
@@ -111,10 +112,24 @@ export default function RatingsPage() {
       );
     }
 
+    // if (filters.serviceType) {
+    //   filtered = filtered.filter(rating => {
+    //     // Match the complaint's Service_type against our two categories
+    //     if (filters.serviceType === 'خدمات فردية') {
+    //       return rating.Complaint?.Service_type === 'خدمات فردية';
+    //     } else if (filters.serviceType === 'خدمات عامة') {
+    //       return rating.Complaint?.Service_type === 'خدمات عامة';
+    //     }
+    //     return rating.Complaint?.Service_type === filters.serviceType;
+    //   });
+    //   console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
+    // }
+
     if (filters.serviceType) {
       filtered = filtered.filter(rating => 
-        rating.complaintDetails?.Service_type === filters.serviceType
+        rating.Complaint?.Service_type === filters.serviceType
       );
+      console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
     }
 
     if (filters.mainCategory) {
@@ -217,13 +232,17 @@ export default function RatingsPage() {
                 onChange={(e) => setFilters({ ...filters, serviceType: e.target.value })}
                 className="w-full border border-gray-300 rounded-md p-2 text-right"
               >
-                <option value="">الكل</option>
+                {/* <option value="">الكل</option>
                 {Array.from(new Set(ratings.map(r => r.Complaint?.Service_type)))
                   .filter(Boolean)
                   .map(type => (
                     <option key={type} value={type}>{type}</option>
                   ))
-                }
+                } */}
+
+                  <option value="">الكل</option>
+                  <option value="خدمات فردية">خدمات فردية</option>
+                  <option value="خدمات عامة">خدمات عامة</option>
               </select>
             </div>
 
@@ -277,12 +296,12 @@ export default function RatingsPage() {
         {filteredRatings.map((item) => (
           <div key={item.id} className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-6">
+              <div className="hover:text-gray-600">
+                <span className="text-lg">{item.Complaint?.id}</span>
+              </div>
               <h3 className="text-lg font-semibold">
                 {getUserName(item.user)}
               </h3>
-              <button className="text-gray-400 hover:text-gray-600">
-                <span className="text-2xl">⋮</span>
-              </button>
             </div>
 
             <div className="mb-6 flex justify-between">

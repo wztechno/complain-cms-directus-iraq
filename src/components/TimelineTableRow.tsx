@@ -25,7 +25,8 @@ export default function TimelineTableRow({ complaint }: TimelineTableRowProps) {
       className="hover:bg-gray-50 cursor-pointer" 
       onClick={() => router.push(`/timeline/${complaint.id}`)}
       key={complaint.id}
-    >
+    >   
+                  <td className="px-6 py-4 whitespace-nowrap text-right">{complaint.complaint_id}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">{complaint.complaint_name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">{complaint.user_name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">{complaint.status_name}</td>

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchWithAuth, registerLogoutHandler } from '@/utils/api';
+import { fetchWithAuth, registerLogoutHandler, setupTokenRefresh, refreshToken } from '@/utils/api';
 
 interface UserInfo {
   id: string;
@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Register the logout handler when component mounts
   useEffect(() => {
@@ -42,6 +43,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Logout handler registered in AuthContext');
     });
   }, []);
+
+  // Setup token refresh when authenticated
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      console.log('Setting up token refresh mechanism');
+      // Setup token refresh interval
+      refreshIntervalRef.current = setupTokenRefresh();
+      
+      // Immediately try to refresh token once at the beginning
+      refreshToken().catch(err => {
+        console.warn('Initial token refresh failed:', err);
+      });
+    }
+    
+    return () => {
+      // Clean up interval on unmount
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+        console.log('Token refresh interval cleared');
+      }
+    };
+  }, [isAuthenticated, token]);
 
   useEffect(() => {
     // Check for token and user info in localStorage on initial load

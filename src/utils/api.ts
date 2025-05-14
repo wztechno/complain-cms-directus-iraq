@@ -3,6 +3,12 @@ const BASE_URL = 'https://complaint.top-wp.com';
 // Add a global function to handle token expiration
 let logoutCallback: (() => void) | null = null;
 
+// Session token refresh interval in milliseconds (10 minutes)
+const TOKEN_REFRESH_INTERVAL = 10 * 60 * 1000;
+
+// Track when the last token refresh occurred
+let lastTokenRefreshTime = 0;
+
 // Function to register the logout handler from AuthContext
 export function registerLogoutHandler(callback: () => void) {
   logoutCallback = callback;
@@ -29,13 +35,86 @@ function handleTokenExpiration() {
   }
 }
 
+// Function to refresh the token before it expires
+export async function refreshToken(): Promise<boolean> {
+  try {
+    const currentToken = localStorage.getItem('auth_token');
+    if (!currentToken) {
+      console.error('Cannot refresh token: No token found');
+      return false;
+    }
+    
+    // If we've refreshed the token recently, don't do it again
+    const now = Date.now();
+    if (now - lastTokenRefreshTime < TOKEN_REFRESH_INTERVAL / 2) {
+      console.log('Token was refreshed recently, skipping');
+      return true;
+    }
+    
+    console.log('Refreshing authentication token...');
+    
+    // For Directus, we can keep the session alive by making a request to /users/me
+    // This is simpler than implementing a full refresh token flow
+    const response = await fetch(`${BASE_URL}/users/me`, {
+      headers: {
+        'Authorization': `Bearer ${currentToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`Failed to refresh session: ${response.status}`);
+      return false;
+    }
+    
+    // If the request was successful, the session is still valid
+    // We just update the timestamp to indicate the session was refreshed
+    lastTokenRefreshTime = now;
+    console.log('Session refreshed successfully');
+    return true;
+  } catch (error) {
+    console.error('Error refreshing session:', error);
+    return false;
+  }
+}
+
+// Schedule periodic token refresh
+export function setupTokenRefresh() {
+  // Immediately set the last refresh time to now
+  lastTokenRefreshTime = Date.now();
+  
+  // Set up interval to refresh token
+  const refreshInterval = setInterval(async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      console.log('No token found, clearing refresh interval');
+      clearInterval(refreshInterval);
+      return;
+    }
+    
+    const success = await refreshToken();
+    if (!success) {
+      console.warn('Token refresh failed, may need to re-authenticate soon');
+    }
+  }, TOKEN_REFRESH_INTERVAL / 2); // Refresh at half the interval to ensure we're always covered
+  
+  console.log(`Token refresh scheduled every ${TOKEN_REFRESH_INTERVAL / (2 * 60 * 1000)} minutes`);
+  
+  // Clear the interval when the window is closed or the page is navigated away
+  window.addEventListener('beforeunload', () => {
+    clearInterval(refreshInterval);
+  });
+  
+  return refreshInterval;
+}
+
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token');
   
   if (!token) {
     console.error('Authentication failed: No auth token found in localStorage');
     const error = new Error('Authentication failed - No token found');
-    (error as any).status = 401;
+    (error as unknown as Record<string, number>).status = 401;
     throw error;
   }
   
@@ -47,6 +126,10 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   };
 
   try {
+    // Any successful API request helps keep the session alive
+    // Update the last refresh time
+    lastTokenRefreshTime = Date.now();
+
     // SPECIAL CASE: For complaint endpoints, route through our local proxy
     if (endpoint.startsWith('/items/Complaint')) {
       // Don't try to reroute to a proxy that doesn't exist

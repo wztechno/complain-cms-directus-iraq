@@ -1,21 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FaPlus, FaTrash, FaBell, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import { GrFilter } from 'react-icons/gr';
 import { fetchWithAuth } from '@/utils/api';
 import { useRouter } from 'next/navigation';
-
-// Interface for Notification
-interface Notification {
-  id: string;
-  name: string;
-  content: string;
-  users: string | string[] | null;
-  district: number | null;
-  date_created?: string;
-  user_created?: string;
-}
 
 // Interface for User
 interface User {
@@ -23,6 +12,30 @@ interface User {
   full_name: string;
   email: string;
   district?: number | null;  // Add district field to User interface
+}
+
+// Interface for embedded user records
+interface UserRecord {
+  id?: string | number;
+  user?: {
+    id: string | number;
+    full_name: string;
+    email?: string;
+  };
+  Users_id?: string | number;
+  users_id?: string | number;
+  full_name?: string;
+}
+
+// Interface for Notification
+interface Notification {
+  id: string;
+  name: string;
+  content: string;
+  users: string | UserRecord[] | null;
+  district: number | null;
+  date_created?: string;
+  user_created?: string;
 }
 
 // Interface for District
@@ -46,6 +59,13 @@ export default function NotificationsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [selectedDistrict, setSelectedDistrict] = useState<number | null>(null);
+  
+  // New state for user search
+  const [userSearchTerm, setUserSearchTerm] = useState<string>("");
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [focusedUserIndex, setFocusedUserIndex] = useState(-1);
+  const searchRef = useRef<HTMLDivElement>(null);
   
   // Form state
   const [notificationForm, setNotificationForm] = useState({
@@ -146,7 +166,8 @@ export default function NotificationsPage() {
       setLoading(true);
       
       // Admin-only page, so fetch all notifications
-      const endpoint = '/items/notification';
+      // Include the 'users' field to get the users data
+      const endpoint = '/items/notification?fields=*,users.*,users.user.*';
       const response = await fetchWithAuth(endpoint);
       
       if (response && response.data) {
@@ -157,6 +178,7 @@ export default function NotificationsPage() {
           return dateB - dateA;
         });
         
+        console.log("Fetched notifications with user data:", sortedNotifications);
         setNotifications(sortedNotifications);
       } else {
         setNotifications([]);
@@ -202,6 +224,82 @@ export default function NotificationsPage() {
       setUsersInSelectedDistrict([]);
     }
   }, [selectedDistrict]);
+
+  // Filter users based on search term
+  useEffect(() => {
+    if (userSearchTerm.trim() === "") {
+      setFilteredUsers([]);
+      return;
+    }
+    
+    const searchTerm = userSearchTerm.toLowerCase();
+    const filtered = users.filter(user => 
+      user.full_name.toLowerCase().includes(searchTerm) || 
+      (user.email && user.email.toLowerCase().includes(searchTerm))
+    );
+    
+    setFilteredUsers(filtered);
+  }, [userSearchTerm, users]);
+
+  // Clear search when selection changes or modal closes
+  useEffect(() => {
+    setUserSearchTerm("");
+    setFilteredUsers([]);
+    setShowUserDropdown(false);
+  }, [selectedUser, showCreateModal]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Reset focused index when filtered users change
+  useEffect(() => {
+    setFocusedUserIndex(-1);
+  }, [filteredUsers]);
+
+  // Handle keyboard navigation in dropdown
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (!showUserDropdown || filteredUsers.length === 0) return;
+    
+    // Arrow down
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocusedUserIndex(prev => 
+        prev < filteredUsers.length - 1 ? prev + 1 : prev
+      );
+    }
+    
+    // Arrow up
+    else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocusedUserIndex(prev => (prev > 0 ? prev - 1 : 0));
+    }
+    
+    // Enter
+    else if (e.key === 'Enter' && focusedUserIndex >= 0) {
+      e.preventDefault();
+      const selectedUser = filteredUsers[focusedUserIndex];
+      setSelectedUser(selectedUser.id);
+      setUserSearchTerm(selectedUser.full_name);
+      setShowUserDropdown(false);
+    }
+    
+    // Escape
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowUserDropdown(false);
+    }
+  };
 
   const handleCreateNotification = async () => {
     try {
@@ -554,71 +652,101 @@ export default function NotificationsPage() {
                         ) : notification.users ? (
                           (() => {
                             console.log(`Notification ${notification.id} users:`, notification.users);
+
+                            // Extract user IDs more reliably
+                            let userIds: string[] = [];
+                            let embeddedUsers: User[] = [];
                             
-                            // Handle users array - specifically looking for objects with Users_id property
-                            const userArray = Array.isArray(notification.users) ? notification.users : [];
-                            const userIds = (userArray as unknown[]).map((userObj) => {
-                              // Type guard to handle objects with numeric IDs
-                              if (typeof userObj === 'object' && userObj !== null) {
-                                const obj = userObj as Record<string, unknown>;
-                                if ('Users_id' in obj && typeof obj.Users_id === 'number') {
-                                  return obj.Users_id.toString();
+                            if (typeof notification.users === 'string') {
+                              // Handle case where users might be a JSON string
+                              try {
+                                const parsedUsers = JSON.parse(notification.users);
+                                if (Array.isArray(parsedUsers)) {
+                                  userIds = parsedUsers.map(u => u.toString());
                                 }
-                                if ('users_id' in obj && (typeof obj.users_id === 'number' || typeof obj.users_id === 'string')) {
-                                  return obj.users_id.toString();
-                                }
-                                if ('id' in obj && (typeof obj.id === 'number' || typeof obj.id === 'string')) {
-                                  return obj.id.toString();
-                                }
+                              } catch {
+                                // If not valid JSON, try as single user ID
+                                userIds = [notification.users];
                               }
-                              // Fallback for string IDs
-                              return typeof userObj === 'string' ? userObj : '';
-                            }).filter(idStr => idStr !== '');
+                            } else if (Array.isArray(notification.users)) {
+                              // Process array of users - handle various formats
+                              
+                              // First check if we have embedded user objects with full_name
+                              embeddedUsers = (notification.users as UserRecord[])
+                                .filter(user => 
+                                  typeof user === 'object' && 
+                                  user !== null && 
+                                  (
+                                    // Check if the object has user data directly
+                                    (user.full_name && typeof user.full_name === 'string') ||
+                                    // Or has a nested user object
+                                    (user.user && typeof user.user === 'object' && 
+                                     user.user.full_name && typeof user.user.full_name === 'string')
+                                  )
+                                )
+                                .map(user => {
+                                  // If user data is nested, extract it
+                                  if (user.user && typeof user.user === 'object' && user.user.full_name) {
+                                    return {
+                                      id: user.user.id.toString(),
+                                      full_name: user.user.full_name,
+                                      email: user.user.email || ''
+                                    };
+                                  }
+                                  // Otherwise return the user object itself as a User
+                                  return {
+                                    id: user.id?.toString() || '',
+                                    full_name: user.full_name || '',
+                                    email: ''
+                                  };
+                                });
+                              
+                              // If we don't have embedded users, extract IDs only
+                              if (embeddedUsers.length === 0) {
+                                userIds = (notification.users as Array<UserRecord | string | number>).map(user => {
+                                  if (typeof user === 'string' || typeof user === 'number') {
+                                    return user.toString();
+                                  } else if (user && typeof user === 'object') {
+                                    // Check for common ID properties in nested objects
+                                    const obj = user as Record<string, unknown>;
+                                    if (obj.Users_id) return obj.Users_id.toString();
+                                    if (obj.users_id) return obj.users_id.toString();
+                                    if (obj.id) return obj.id.toString();
+                                    
+                                    // Handle nested user object
+                                    if (obj.user && typeof obj.user === 'object' && obj.user && 'id' in obj.user) {
+                                      return (obj.user as {id: string | number}).id.toString();
+                                    }
+                                  }
+                                  return '';
+                                }).filter(id => id !== '');
+                              }
+                            }
                             
                             console.log('Extracted user IDs:', userIds);
-                            console.log('Available users:', users.map(u => `${u.id} (${u.full_name})`));
+                            console.log('Embedded users:', embeddedUsers);
                             
-                            if (userIds.length === 0) {
+                            if (userIds.length === 0 && embeddedUsers.length === 0) {
                               return <span>لا يوجد مستخدمين محددين</span>;
                             }
                             
-                            // Create a secondary lookup to debug the issue
-                            const userLookup: Record<string, User> = {};
-                            users.forEach(user => {
-                              userLookup[user.id.toString()] = user;
-                            });
-                            
-                            // Log the lookup keys to debug
-                            console.log('User lookup keys:', Object.keys(userLookup));
-                            
                             return (
                               <div className="flex flex-wrap gap-1">
+                                {/* Display embedded users first if we have them */}
+                                {embeddedUsers.map((user) => (
+                                  <span key={user.id} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
+                                    {user.full_name}
+                                  </span>
+                                ))}
+                                
+                                {/* Then look up and display users by ID */}
                                 {userIds.map((userId: string) => {
-                                  // Convert userId to string for consistency
-                                  const userIdStr = userId.toString();
-                                  
-                                  // Direct lookup from the object we created
-                                  const user = userLookup[userIdStr];
-                                  
-                                  // Additional debug logging
-                                  if (!user) {
-                                    console.warn(`No user found for ID ${userIdStr}. Looking for exact match in: ${users.map(u => u.id).join(', ')}`);
-                                    
-                                    // Try a direct search as a fallback
-                                    const directUser = users.find(u => u.id.toString() === userIdStr);
-                                    if (directUser) {
-                                      console.log(`Found user through direct search: ${directUser.full_name}`);
-                                      return (
-                                        <span key={userIdStr} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
-                                          {directUser.full_name}
-                                        </span>
-                                      );
-                                    }
-                                  }
+                                  // Find the user by ID
+                                  const user = users.find(u => u.id.toString() === userId.toString());
                                   
                                   return (
-                                    <span key={userIdStr} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
-                                      {user ? user.full_name : `مستخدم #${userIdStr}`}
+                                    <span key={userId} className="bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block text-xs mr-1 mb-1">
+                                      {user ? user.full_name : `مستخدم #${userId}`}
                                     </span>
                                   );
                                 })}
@@ -718,6 +846,9 @@ export default function NotificationsPage() {
                         filterByDistrict: false
                       });
                       setSelectedDistrict(null);
+                      // Clear user search when switching to this option
+                      setUserSearchTerm("");
+                      setFilteredUsers([]);
                     }}
                     className="h-4 w-4"
                   />
@@ -738,6 +869,10 @@ export default function NotificationsPage() {
                       });
                       setSelectedUser("");
                       setSelectedDistrict(null);
+                      // Clear user search when switching to this option
+                      setUserSearchTerm("");
+                      setFilteredUsers([]);
+                      setShowUserDropdown(false);
                     }}
                     className="h-4 w-4"
                   />
@@ -754,9 +889,14 @@ export default function NotificationsPage() {
                     onChange={() => {
                       setNotificationForm({
                         ...notificationForm, 
-                        filterByDistrict: true
+                        filterByDistrict: true,
+                        sendToAll: false
                       });
                       setSelectedUser("");
+                      // Clear user search when switching to this option
+                      setUserSearchTerm("");
+                      setFilteredUsers([]);
+                      setShowUserDropdown(false);
                     }}
                     className="h-4 w-4"
                   />
@@ -772,34 +912,56 @@ export default function NotificationsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
                     المستخدم
                   </label>
-                  <select
-                    className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                    value={selectedUser}
-                    onChange={(e) => {
-                      setSelectedUser(e.target.value);
-                      console.log("Selected user ID:", e.target.value);
-                    }}
-                    dir="rtl"
-                  >
-                    <option value="">اختر مستخدم</option>
-                    {users.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.full_name} ({user.email})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative" ref={searchRef}>
+                    <input
+                      type="text"
+                      value={userSearchTerm}
+                      onChange={(e) => {
+                        setUserSearchTerm(e.target.value);
+                        setShowUserDropdown(true);
+                      }}
+                      onFocus={() => setShowUserDropdown(true)}
+                      onKeyDown={handleSearchKeyDown}
+                      className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                      placeholder="ابحث عن مستخدم بالاسم أو البريد الإلكتروني"
+                      dir="rtl"
+                    />
+                    {showUserDropdown && filteredUsers.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-md overflow-auto border border-gray-300">
+                        {filteredUsers.map((user, index) => (
+                          <div
+                            key={user.id}
+                            className={`p-2 hover:bg-blue-50 cursor-pointer text-right border-b border-gray-100 ${focusedUserIndex === index ? 'bg-blue-100' : ''}`}
+                            onClick={() => {
+                              setSelectedUser(user.id);
+                              setUserSearchTerm(user.full_name);
+                              setShowUserDropdown(false);
+                            }}
+                          >
+                            <div className="font-medium">{user.full_name}</div>
+                            <div className="text-sm text-gray-500">{user.email}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {userSearchTerm && filteredUsers.length === 0 && (
+                      <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-300 p-2 text-right">
+                        <span className="text-gray-500">لا توجد نتائج</span>
+                      </div>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-500 mt-1 text-right">
-                    اختر مستخدم واحد لإرسال الإشعار له
+                    ابحث واختر مستخدم واحد لإرسال الإشعار له
                   </p>
                   {selectedUser && (
                     <div className="mt-2 p-2 bg-gray-50 rounded">
-                      <div className="text-sm font-medium">المستخدم المحدد:</div>
-                      <div className="flex flex-wrap gap-1 mt-1">
+                      <div className="text-sm font-medium text-right">المستخدم المحدد:</div>
+                      <div className="flex flex-wrap gap-1 mt-1 justify-end">
                         {(() => {
                           const user = users.find(u => u.id === selectedUser);
                           return (
                             <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
-                              {user ? `${user.full_name}` : selectedUser}
+                              {user ? `${user.full_name} (${user.email})` : selectedUser}
                             </span>
                           );
                         })()}

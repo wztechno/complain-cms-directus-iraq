@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FaClipboardList, FaHistory, FaListUl, FaStar, FaLayerGroup, FaMapMarkedAlt, FaTags, FaUsers, FaCog, FaSignOutAlt, FaBell } from 'react-icons/fa';
+import { FaClipboardList, FaHistory, FaListUl, FaStar, FaLayerGroup, FaMapMarkedAlt, FaTags, FaUsers, FaCog, FaSignOutAlt, FaBell, FaNewspaper } from 'react-icons/fa';
 import { IoMdGitNetwork } from 'react-icons/io';
 import { IoMenu } from 'react-icons/io5';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +34,7 @@ const Sidebar = () => {
     { title: 'الفئة الفرعية للمعالجة', href: '/status/sub-category', icon: <FaTags size={20} />, collection: 'Status_subcategory' },
     { title: 'المواطنون', href: '/citizens', icon: <FaUsers size={20} />, collection: 'Users' },
     { title: 'الإشعارات', href: '/notifications', icon: <FaBell size={20} />, collection: 'notification', adminOnly: true },
+    { title: 'الأخبار', href: '/news', icon: <FaNewspaper size={20} />, collection: 'news', adminOnly: true },
     { title: 'الإعدادات', href: '/settings', icon: <FaCog size={20} />, collection: 'settings' },
   ], []);
 

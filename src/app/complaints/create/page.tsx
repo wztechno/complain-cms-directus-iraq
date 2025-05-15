@@ -16,6 +16,7 @@ export default function CreateComplaintPage() {
   const [submitting, setSubmitting] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [loadingGovernorates, setLoadingGovernorates] = useState(false);
+  const [complaintSubcategories, setComplaintSubcategories] = useState<{ id: number, name: string }[]>([]);
   
   // File upload refs and state
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -38,6 +39,7 @@ export default function CreateComplaintPage() {
     status_subcategory: '',
     governorate_name: '',
     completion_percentage: 0,
+    Complaint_Subcategory: '',
     // These will store the file IDs after upload
     image: '',
     video: '',
@@ -55,11 +57,12 @@ export default function CreateComplaintPage() {
           return;
         }
 
-        const [distRes, complaintRes, statusRes, govRes] = await Promise.all([
+        const [distRes, complaintRes, statusRes, govRes, complaintSubRes] = await Promise.all([
           fetchWithAuth('/items/District?filter[active]=true'),
           fetchWithAuth('/items/Complaint'),
           fetchWithAuth('/items/Status_subcategory'),
           fetchWithAuth('/items/Governorate'),
+          fetchWithAuth('/items/Complaint_sub_category'),
         ]);
 
         if (distRes?.data) {
@@ -80,6 +83,10 @@ export default function CreateComplaintPage() {
 
         if (statusRes?.data) {
           setStatusSubcategories(statusRes.data);
+        }
+
+        if (complaintSubRes?.data) {
+          setComplaintSubcategories(complaintSubRes.data);
         }
 
         setLoading(false);
@@ -224,6 +231,7 @@ export default function CreateComplaintPage() {
         status_subcategory: number | null;
         governorate_name: string;
         completion_percentage: number;
+        Complaint_Subcategory: number | null;
         image?: string;
         video?: string;
         voice?: string;
@@ -238,7 +246,8 @@ export default function CreateComplaintPage() {
         district: formData.district ? parseInt(formData.district, 10) : null,
         status_subcategory: formData.status_subcategory ? parseInt(formData.status_subcategory, 10) : null,
         governorate_name: formData.governorate_name,
-        completion_percentage: formData.completion_percentage
+        completion_percentage: formData.completion_percentage,
+        Complaint_Subcategory: formData.Complaint_Subcategory ? parseInt(formData.Complaint_Subcategory, 10) : null
       };
       
       if (filesToUpload.length > 0) {
@@ -439,8 +448,8 @@ export default function CreateComplaintPage() {
                 </select>
               </div>
             </div>
-
-            <div>
+            <div className="grid grid-cols-2 gap-6">
+            <div className="col-span-1">
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
               القضاء *
               </label>
@@ -466,7 +475,7 @@ export default function CreateComplaintPage() {
             </div>
 
             {/* Status Subcategory */}
-            <div>
+            <div className="col-span-1">
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 التصنيف الفرعي للحالة
               </label>
@@ -483,6 +492,25 @@ export default function CreateComplaintPage() {
               </select>
             </div>
             
+            {/* Complaint Subcategory */}
+            <div className="col-span-1">
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                تصنيف الشكوى الفرعي *
+              </label>
+              <select
+                name="Complaint_Subcategory"
+                value={formData.Complaint_Subcategory}
+                onChange={handleInputChange}
+                required
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              >
+                <option value="">اختر تصنيف الشكوى</option>
+                {complaintSubcategories.map((subcat) => (
+                  <option key={subcat.id} value={subcat.id}>{subcat.name}</option>
+                ))}
+              </select>
+            </div>
+            </div>
             {/* File Uploads Section */}
             <div className="border-t border-gray-200 pt-6">
               <h3 className="text-lg font-medium text-gray-900 text-right mb-4">

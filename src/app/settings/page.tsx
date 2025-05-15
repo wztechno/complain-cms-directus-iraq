@@ -1020,7 +1020,7 @@ export default function SettingsPage() {
                     { name: 'Complaint_sub_category', label: 'الفئة الفرعية للشكوى', hasCustom: false },
                     { name: 'District', label: 'المحافظة', hasCustom: false },
                     { name: 'Status_category', label: 'الفئة الرئيسية للحالة', hasCustom: false },
-                    { name: 'Status_subcategory', label: 'الفئة الفرعية للحالة', hasCustom: false },
+                    { name: 'Status_subcategory', label: 'الفئة الفرعية للحالة', hasCustom: true },
                     { name: 'Users', label: 'المستخدمين', hasCustom: false },
                     { name: 'user_policies', label: 'السياسات المخصصة للمستخدم', hasCustom: false },
                     { name: 'directus_policies', label: 'السياسات', hasCustom: false },
@@ -1089,19 +1089,22 @@ export default function SettingsPage() {
             </h2>
 
             <div className="space-y-4">
-              {/* {selectedCollection === 'Status_subcategory' && (
+              {selectedCollection === 'Status_subcategory' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                    معرف الفئة الفرعية للحالة
+                    الفئة الفرعية للحالة
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={customConditionValue}
                     onChange={(e) => setCustomConditionValue(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                    placeholder="أدخل معرف الفئة الفرعية"
                     dir="rtl"
-                  />
+                  >
+                    <option value="">اختر الفئة الفرعية للحالة</option>
+                    {subCategories.map(sub => (
+                      <option key={sub.id} value={sub.id}>{sub.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 
@@ -1124,7 +1127,7 @@ export default function SettingsPage() {
                     ))}
                   </select>
                 </div>
-              )} */}
+              )}
 
               {selectedCollection === 'Complaint' && (
                 <div className="space-y-4">

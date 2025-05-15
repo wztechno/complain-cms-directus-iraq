@@ -5,40 +5,78 @@ import { GrFilter } from 'react-icons/gr';
 import { FaFileDownload, FaPlus, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import ComplaintCard from '@/components/ComplaintCard';
 import { fetchWithAuth } from '@/utils/api';
-import { getUserPermissions, hasPermission, applyPermissionFilters, complaintMatchesPermissions } from '@/utils/permissions';
+import { getUserPermissions, complaintMatchesPermissions } from '@/utils/permissions';
+import { buildStatusToUserMap, StatusToUserMap } from '@/utils/responsible-users';
 
 // Add BASE_URL constant
 const BASE_URL = 'https://complaint.top-wp.com';
 
-// Add interface for District
+// Define interface for Permission
+interface Permission {
+  permissions?: {
+    _and?: Array<{
+      id?: {
+        _eq?: string;
+      };
+    }>;
+  };
+  policy?: string;
+  action?: string;
+  collection?: string;
+}
+
+// Define District interface
 interface District {
   id: number;
   name: string;
 }
 
-// interface Status_subcategory {
-//   id: number;
-//   name: string;
-//   status_category: {
-//     id: number;
-//     name: string;
-//   }
-// }
-
-// Add interface for Complaint with district relationship
+// Interface for Complaint
 interface Complaint {
   id: string;
   title: string;
   description: string;
   Service_type: string;
   district: number | null;
-  districtName?: string; // This will store the district name after joining
+  districtName?: string;
   status_subcategory: string | number;
   completion_percentage: string | number;
   date?: string;
   statusDate?: string;
   status?: string;
-  // Add other fields as needed
+  [key: string]: any; // Allow additional properties
+}
+
+// Update UserPolicy interface
+interface UserPolicy {
+  id: string;
+  policy: string;
+  policy_id?: string | string[];
+  user_id: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  } | Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+  }>;
+}
+
+// User interface for the user map
+interface User {
+  firstName: string;
+  lastName: string;
+}
+
+// Status subcategory interface
+interface StatusSubcategory {
+  id: string | number;
+  name?: string;
+  status_category?: {
+    id?: number;
+    name?: string;
+  };
 }
 
 export default function ComplaintsPage() {
@@ -65,9 +103,30 @@ export default function ComplaintsPage() {
     compelation_percentage:'',
     id: ''
   });
+// app/complaints/page.tsx  (inside the component)
+const [statusPermissions, setStatusPermissions] = useState<Record<string,string>>({});
+const [usersByPolicy   , setUsersByPolicy   ] = useState<Record<string,User>>({});
+const [statusToUserMap, setStatusToUserMap] = useState<StatusToUserMap>({});
+
+useEffect(() => {
+  (async () => {
+    try {
+      console.log("Fetching responsible users mapping...");
+      const map = await buildStatusToUserMap();
+      console.log("Status to user map received:", map);
+      setStatusToUserMap(map); // still useful to store
+      await fetchComplaints(map); // pass directly
+    } catch (err) {
+      console.error('Responsible-user map failed:', err);
+      await fetchComplaints({}); // fallback
+    }
+  })();
+}, []);
+
 
   useEffect(() => {
     fetchDistrictsAndComplaints();
+    // fetchResponsibleUsersData();
   }, []);
 
   useEffect(() => {
@@ -80,7 +139,7 @@ export default function ComplaintsPage() {
       setLoading(true);
       
       // First fetch districts
-      const districtsData = await fetchWithAuth('/items/District');
+      const districtsData = await fetchWithAuth('/items/District?filter[active][_eq]=true');
       
       if (!districtsData || !districtsData.data) {
         console.error("No districts data returned from API");
@@ -108,7 +167,7 @@ export default function ComplaintsPage() {
     }
   };
 
-  const fetchComplaints = async () => {
+  const fetchComplaints = async (statusUserMapOverride: StatusToUserMap = {}) => {
     try {
       setLoading(true);
 
@@ -121,6 +180,13 @@ export default function ComplaintsPage() {
       setIsUserAdmin(isAdmin); 
       console.log("isUserAdmin: ", isUserAdmin)
       console.log("isAdmin: ", isAdmin)
+
+      // Make sure responsible users data is loaded
+      if (Object.keys(usersByPolicy).length === 0) {
+        console.log("Responsible users data not loaded yet, loading now...");
+      } else {
+        console.log("Responsible users data already loaded", usersByPolicy);
+      }
 
       let url = '/items/Complaint';
       
@@ -353,23 +419,38 @@ export default function ComplaintsPage() {
       console.log(`Found ${uniquePercentation.length} unique Percentage values:`, uniquePercentation);
 
       const status_subcategories = await fetch('https://complaint.top-wp.com/items/Status_subcategory?fields=*,status_category.*');
-      const res = await status_subcategories.json(); // <-- Await the JSON parsing
+      const res = await status_subcategories.json();
       
-      const enrichedComplaints = sortedComplaints.map((complaint: any) => {
+      const enrichedComplaints = sortedComplaints.map((c: Complaint) => {
         const matched = res.data.find(
-          (item: any) => item.id === complaint.status_subcategory
+          (item: any) => String(item.id) === String(c.status_subcategory)
         );
       
+        let responsibleUser = 'غير محدد';
+        const statusId = String(c.status_subcategory);
+      
+        if (statusId && statusUserMapOverride[statusId]) {
+          responsibleUser = statusUserMapOverride[statusId];
+          console.log(`✓ Found responsible user "${responsibleUser}" for complaint ${c.id} with status_subcategory ${statusId}`);
+        } else {
+          console.log(`⚠️ No responsible user in map for status_subcategory ${statusId}`);
+        }
+      
         return {
-          ...complaint,
+          ...c,
           mainCategory: matched?.status_category?.name || null,
+          responsibleUser
         };
       });
+      
       
       setComplaints(enrichedComplaints);
       setFilteredComplaints(enrichedComplaints);
       console.log("Enriched and final complaints:", enrichedComplaints);
-      
+      console.log("complaints",complaints);
+      console.log("filteredComplaints",filteredComplaints);
+      console.log("currentComplaints",currentComplaints);
+    
       
       
       setLoading(false);
@@ -380,6 +461,8 @@ export default function ComplaintsPage() {
       setFilteredComplaints([]);
     }
   };
+
+  
 
   const handleFilter = () => {
     try {
@@ -581,7 +664,7 @@ export default function ComplaintsPage() {
     
     // Process in smaller batches to avoid overloading the API
     const batchSize = 5;
-    let updatedComplaints = [...complaintsArray];
+    const updatedComplaints = [...complaintsArray];
     
     for (let i = 0; i < complaintsWithoutDistricts.length; i += batchSize) {
       const batch = complaintsWithoutDistricts.slice(i, i + batchSize);
@@ -826,6 +909,7 @@ export default function ComplaintsPage() {
                   progress={complaint.completion_percentage || 0}
                   isSelected={selectedComplaints.includes(complaint.id)}
                   onSelect={toggleComplaintSelection}
+                  responsibleUser={complaint.responsibleUser}
                 />
               ))}
             </div>

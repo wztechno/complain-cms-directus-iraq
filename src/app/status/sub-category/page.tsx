@@ -752,8 +752,9 @@ export default function StatusSubCategoryPage() {
                   name="complaint_subcategory"
                   value={newSubCategory.complaint_subcategory}
                   onChange={handleComplaintSubcategoryChange}
-                  className="w-full border border-gray-300 rounded-lg p-2"
+                  className={`w-full border border-gray-300 rounded-lg p-2 ${!newSubCategory.district ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   required={false}
+                  disabled={!newSubCategory.district}
                 >
                   <option value="">اختر نوع الشكوى</option>
                   {filteredComplaintSubCategories && filteredComplaintSubCategories.length > 0 ? (
@@ -766,8 +767,10 @@ export default function StatusSubCategoryPage() {
                     <option value="" disabled>لا توجد خيارات متاحة</option>
                   )}
                 </select>
-                {filteredComplaintSubCategories.length === 0 && (
-                  <p className="text-sm text-red-500 mt-1">الرجاء اختيار المحافظة أولاً</p>
+                {!newSubCategory.district ? (
+                  <p className="text-sm text-yellow-500 mt-1">الرجاء اختيار المحافظة أولاً</p>
+                ) : filteredComplaintSubCategories.length === 0 && (
+                  <p className="text-sm text-red-500 mt-1">لا توجد أنواع شكاوى متاحة لهذه المحافظة</p>
                 )}
               </div>
 

@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { FaStar } from 'react-icons/fa';
 import { GrFilter } from 'react-icons/gr';
-import { fetchWithAuth } from '@/utils/api';
 import { exportToCSV } from '@/utils/export';
 
 interface UserDetails {
@@ -47,7 +46,8 @@ export default function RatingsPage() {
     startDate: '',
     mainCategory:'',
     endDate: '',
-    serviceType: ''
+    serviceType: '',
+    complaintId: ''
   });
 
   useEffect(() => {
@@ -112,18 +112,12 @@ export default function RatingsPage() {
       );
     }
 
-    // if (filters.serviceType) {
-    //   filtered = filtered.filter(rating => {
-    //     // Match the complaint's Service_type against our two categories
-    //     if (filters.serviceType === 'خدمات فردية') {
-    //       return rating.Complaint?.Service_type === 'خدمات فردية';
-    //     } else if (filters.serviceType === 'خدمات عامة') {
-    //       return rating.Complaint?.Service_type === 'خدمات عامة';
-    //     }
-    //     return rating.Complaint?.Service_type === filters.serviceType;
-    //   });
-    //   console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
-    // }
+    if (filters.complaintId) {
+      filtered = filtered.filter(rating => 
+        rating.Complaint?.id.toString().includes(filters.complaintId)
+      );
+      console.log(`After complaint ID filter (${filters.complaintId}): ${filtered.length} ratings`);
+    }
 
     if (filters.serviceType) {
       filtered = filtered.filter(rating => 
@@ -207,6 +201,19 @@ export default function RatingsPage() {
       {showFilters && (
         <div className="mb-6 bg-white p-4 rounded-lg shadow-sm">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+                رقم الشكوى
+              </label>
+              <input
+                type="text"
+                value={filters.complaintId}
+                onChange={(e) => setFilters({ ...filters, complaintId: e.target.value })}
+                placeholder="أدخل رقم الشكوى"
+                className="w-full border border-gray-300 rounded-md p-2 text-right"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 text-right mb-1">
                 التقييم

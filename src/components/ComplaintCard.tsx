@@ -15,6 +15,7 @@ interface ComplaintCardProps {
   progress: number;
   isSelected?: boolean;
   onSelect?: (id: string) => void;
+  responsibleUser?: string;
 }
 
 const ComplaintCard = ({ 
@@ -27,6 +28,7 @@ const ComplaintCard = ({
   mainCategory,
   progress, 
   isSelected = false,
+  responsibleUser,
   onSelect 
 }: ComplaintCardProps) => {
   const router = useRouter();
@@ -48,6 +50,7 @@ const ComplaintCard = ({
     }
     setShowMenu(false);
   };
+  console.log("responsibleUser",responsibleUser);
 
   return (
     <div 
@@ -98,6 +101,9 @@ const ComplaintCard = ({
             className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-red-500"
           />
         </div>
+      </div>
+      <div className="mt-2 text-sm">
+        <span className="font-bold">المسؤول:</span> {responsibleUser || 'غير محدد'}
       </div>
 
       <div className="flex justify-between items-center mt-8 mb-4 text-right">

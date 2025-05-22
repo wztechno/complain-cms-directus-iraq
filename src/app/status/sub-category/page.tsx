@@ -236,22 +236,16 @@ export default function StatusSubCategoryPage() {
         // Admin: Fetch all subcategories
         resData = await fetch(`https://complaint.top-wp.com/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(true);
-        console.log("res", res);
       } else {
         // Non-admin: Filter by district
         resData = await fetch(`https://complaint.top-wp.com/items/Status_subcategory?filter[district][_eq]=${district_id}&fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(false);
       }
+      
       const res = await resData.json();
-      if (res && res.data) {
-        const subCategoriesData = res.data;
-  
-        console.log(`Fetched ${subCategoriesData.length} subcategories`);
-  
-        setSubCategories(subCategoriesData);
-      } else {
-        throw new Error('Failed to fetch subcategories');
-      }
+      console.log("res", res);
+      if (!res?.data) throw new Error("No data returned");
+      setSubCategories(res.data);
 
       // Fetch complaint subcategories based on user's district or all if admin
       const complaintSubCategoriesResponse = await fetchWithAuth(`/items/Complaint_sub_category?filter[district][_eq]=${district_id}`);

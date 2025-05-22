@@ -114,8 +114,10 @@ export default function ComplaintsPage() {
 
       /* 3️⃣ districts list */
       const districtResp = await fetchWithAuth('/items/District?filter[active][_eq]=true');
-      setDistricts(districtResp?.data ?? []);
-      const districtMap = new Map(districtResp?.data?.map((d: District) => [d.id, d.name]));
+      const districtsData = districtResp?.data ?? [];
+      setDistricts(districtsData);
+      const districtMapTyped = new Map<number, string>();
+      districtsData.forEach((d: District) => districtMapTyped.set(d.id, d.name));
 
       /* 4️⃣ complaints core list */
       let url = '/items/Complaint';
@@ -126,7 +128,7 @@ export default function ComplaintsPage() {
         if (f.length) url += `?filter[_or]=[${f.join(',')}]`;
       }
       const compResp = await fetchWithAuth(url);
-      const compArr: Complaint[] = await enrichComplaints(compResp.data, districtMap, statusToUser);
+      const compArr: Complaint[] = await enrichComplaints(compResp.data, districtMapTyped, statusToUser);
 
       /* 5️⃣ build filter dropdown data */
       setTitleList(unique(compArr.map((c) => c.title || '')));
@@ -205,7 +207,7 @@ export default function ComplaintsPage() {
 
     return sortByDate(
       data.map((c: any) => {
-        const distName = c.district ? districtMap.get(c.district) : undefined;
+        const distName = c.district ? districtMap.get(Number(c.district)) : undefined;
         const subMeta = subRes.data.find((s: any) => String(s.id) === String(c.status_subcategory));
         const respUser = statusUser[String(c.status_subcategory)] ?? 'غير محدد';
         return {
@@ -221,9 +223,12 @@ export default function ComplaintsPage() {
   /* ------------------------------------------------
    * CSV export helper
    * ------------------------------------------------*/
-  const exportCsv = (scope: 'all' | 'selected') => {
+  const exportCsv = useCallback((scope: 'all' | 'selected') => {
+    if (typeof window === 'undefined') return; // Guard against server-side execution
+    
     const list = scope === 'all' ? filtered : filtered.filter((c) => selectedIds.includes(c.id));
     if (!list.length) return alert('لا توجد شكاوى للتصدير');
+    
     const rows = [
       ['ID', 'العنوان', 'الوصف', 'نوع الخدمة', 'المحافظة', 'نسبة الإكمال', 'التاريخ'],
       ...list.map((c) => [
@@ -238,13 +243,14 @@ export default function ComplaintsPage() {
     ]
       .map((r) => r.join(','))
       .join('\n');
+    
     const blob = new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `complaints_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     setShowExportOptions(false);
-  };
+  }, [filtered, selectedIds]);
 
   /* ------------------------------------------------
    * Render helpers
@@ -258,6 +264,9 @@ export default function ComplaintsPage() {
   /* ------------------------------------------------
    * JSX
    * ------------------------------------------------*/
+
+  console.log("complaints",complaints);
+
   return (
     <div className="min-h-screen bg-gray-100 flex">
       <main className="flex-1 p-8 mr-64">
@@ -341,31 +350,63 @@ const Header = ({
   </div>
 );
 
-const ExportDropdown = ({ selectedCount, onExport }: any) => {
-  const [open, setOpen] = useState(false);
+interface ExportDropdownProps {
+  selectedCount: number;
+  onExport: (scope: 'all' | 'selected') => void;
+}
+
+const ExportDropdown: React.FC<ExportDropdownProps> = ({ selectedCount, onExport }) => {
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
-        className="bg-[#4664AD] hover:bg-[#F9FAFB] hover:text-[#4664AD] text-[#F9FAFB] px-4 py-2 rounded-lg flex items-center gap-2"
+        onClick={() => onExport('all')}
+        className="bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499] flex items-center gap-2"
       >
-        <FaFileDownload size={14} /> تصدير البيانات
+        <FaFileDownload />
+        <span>تصدير الكل</span>
       </button>
-      {open && (
-        <div className="absolute left-0 mt-2 bg-white rounded-lg shadow-lg w-48 z-10">
-          <button onClick={() => onExport('all')} className="block w-full text-right px-4 py-2 hover:bg-gray-100 rounded-t-lg">
-            تصدير كل الشكاوى
-          </button>
-          <button onClick={() => onExport('selected')} className="block w-full text-right px-4 py-2 hover:bg-gray-100 rounded-b-lg">
-            تصدير الشكاوى المحددة ({selectedCount})
-          </button>
-        </div>
+      {selectedCount > 0 && (
+        <button
+          onClick={() => onExport('selected')}
+          className="mt-2 bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499] flex items-center gap-2"
+        >
+          <FaFileDownload />
+          <span>تصدير {selectedCount} مختارة</span>
+        </button>
       )}
     </div>
   );
 };
 
-const Filters = ({
+interface FiltersProps {
+  districts: District[];
+  titles: string[];
+  statuses: string[];
+  completions: string[];
+  isAdmin: boolean;
+  filters: {
+    id: string;
+    governorate: string;
+    title: string;
+    status: string;
+    completion: string;
+    serviceType: string;
+    startDate: string;
+    endDate: string;
+  };
+  setFilters: React.Dispatch<React.SetStateAction<{
+    id: string;
+    governorate: string;
+    title: string;
+    status: string;
+    completion: string;
+    serviceType: string;
+    startDate: string;
+    endDate: string;
+  }>>;
+}
+
+const Filters: React.FC<FiltersProps> = ({
   districts,
   titles,
   statuses,
@@ -373,51 +414,102 @@ const Filters = ({
   isAdmin,
   filters,
   setFilters
-}: any) => (
-  <div className="mb-6 bg-white p-4 rounded-lg shadow-sm">
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      {/* each input */}
-      <FLT label="رقم الشكوى">
-        <input type="text" className="input" value={filters.id} onChange={(e) => setFilters({ ...filters, id: e.target.value })} />
-      </FLT>
-      <FLT label="فئة الشكوى">
-        <Select value={filters.title} onChange={(e) => setFilters({ ...filters, title: e.target.value })} list={titles} />
-      </FLT>
-      <FLT label="الشكوى">
-        <Select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} list={statuses} />
-      </FLT>
-      <FLT label="نسبة الإنجاز">
-        <Select value={filters.completion} onChange={(e) => setFilters({ ...filters, completion: e.target.value })} list={completions} suffix="%" />
-      </FLT>
-      {isAdmin && (
+}) => {
+  return (
+    <div className="bg-white rounded-lg p-6 shadow mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <FLT label="رقم الشكوى">
+          <input
+            type="text"
+            value={filters.id}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setFilters((f) => ({ ...f, id: e.target.value }))
+            }
+            className="w-full border border-gray-300 p-2 rounded text-right"
+            placeholder="ابحث برقم الشكوى"
+          />
+        </FLT>
+
         <FLT label="المحافظة">
           <Select
             value={filters.governorate}
-            onChange={(e) => setFilters({ ...filters, governorate: e.target.value })}
-            list={districts.map((d: District) => d.name)}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setFilters((f) => ({ ...f, governorate: e.target.value }))
+            }
+            list={districts.map((d) => d.name)}
           />
         </FLT>
-      )}
-      <FLT label="نوع الخدمة">
-        <select
-          className="input"
-          value={filters.serviceType}
-          onChange={(e) => setFilters({ ...filters, serviceType: e.target.value })}
-        >
-          <option value="">الكل</option>
-          <option value="خدمات فردية">خدمات فردية</option>
-          <option value="خدمات عامة">خدمات عامة</option>
-        </select>
-      </FLT>
-      <FLT label="من تاريخ">
-        <input type="date" className="input" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
-      </FLT>
-      <FLT label="الى تاريخ">
-        <input type="date" className="input" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} />
-      </FLT>
+
+        <FLT label="عنوان الشكوى">
+          <Select
+            value={filters.title}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setFilters((f) => ({ ...f, title: e.target.value }))
+            }
+            list={titles}
+          />
+        </FLT>
+
+        <FLT label="نوع الخدمة">
+          <select
+            value={filters.serviceType}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setFilters((f) => ({ ...f, serviceType: e.target.value }))
+            }
+            className="w-full border border-gray-300 p-2 rounded text-right"
+          >
+            <option value="">الكل</option>
+            <option value="خدمات فردية">خدمات فردية</option>
+            <option value="خدمات عامة">خدمات عامة</option>
+          </select>
+        </FLT>
+
+        <FLT label="الحالة">
+          <Select
+            value={filters.status}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setFilters((f) => ({ ...f, status: e.target.value }))
+            }
+            list={statuses}
+          />
+        </FLT>
+
+        <FLT label="نسبة الإنجاز">
+          <Select
+            value={filters.completion}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+              setFilters((f) => ({ ...f, completion: e.target.value }))
+            }
+            list={completions}
+            suffix="%"
+          />
+        </FLT>
+
+        <FLT label="من تاريخ">
+          <input
+            type="date"
+            value={filters.startDate}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setFilters((f) => ({ ...f, startDate: e.target.value }))
+            }
+            className="w-full border border-gray-300 p-2 rounded"
+          />
+        </FLT>
+
+        <FLT label="إلى تاريخ">
+          <input
+            type="date"
+            value={filters.endDate}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setFilters((f) => ({ ...f, endDate: e.target.value }))
+            }
+            className="w-full border border-gray-300 p-2 rounded"
+          />
+        </FLT>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const FLT = ({ label, children }: any) => (
   <div>
@@ -425,35 +517,31 @@ const FLT = ({ label, children }: any) => (
     {children}
   </div>
 );
-const Select = ({ list, suffix = '', ...rest }: any) => (
-  <select className="input" {...rest}>
-    <option value="">الكل</option>
-    {list.map((v: string) => (
-      <option key={v} value={v}>
-        {v}
-        {suffix}
-      </option>
-    ))}
-  </select>
-);
 
-const Grid = ({ complaints, selected, onSelect }: any) => (
+interface GridProps {
+  complaints: Complaint[];
+  selected: string[];
+  onSelect: (id: string) => void;
+}
+
+const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect }) => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    {complaints.map((c: Complaint) => (
-      <ComplaintCard
-        key={c.id}
-        id={c.id}
-        title={c.title || 'بدون عنوان'}
-        status={c.status}
-        mainCategory={c.mainCategory}
-        type={c.Service_type || 'غير محدد'}
-        location={c.districtName || 'غير محدد'}
-        issue={c.description || 'لا يوجد وصف'}
-        progress={c.completion_percentage || 0}
-        isSelected={selected.includes(c.id)}
-        onSelect={onSelect}
-        responsibleUser={c.responsibleUser}
-      />
+    {complaints.map((c) => (
+      <div key={c.id}>
+        <ComplaintCard
+          id={c.id}
+          title={c.title || 'بدون عنوان'}
+          status={c.status || 'غير محدد'}
+          mainCategory={c.mainCategory || 'غير محدد'}
+          type={c.Service_type || 'غير محدد'}
+          location={c.districtName || 'غير محدد'}
+          progress={Number(c.completion_percentage) || 0}
+          issue={c.description || 'لا يوجد وصف'}
+          isSelected={selected.includes(c.id)}
+          onSelect={onSelect}
+          responsibleUser={c.responsibleUser}
+        />
+      </div>
     ))}
   </div>
 );
@@ -482,7 +570,32 @@ const EmptyState = ({ text, sub }: any) => (
   </div>
 );
 
-// global styles for select/input
-const style = document.createElement('style');
-style.innerHTML = `.input{width:100%;border:1px solid #d1d5db;border-radius:0.375rem;padding:0.5rem;text-align:right}`;
-document.head.appendChild(style);
+// Add styles using Tailwind classes instead of global styles
+const Select = ({ list, suffix = '', ...rest }: any) => (
+  <select
+    className="w-full border border-gray-300 rounded-md p-2 text-right"
+    {...rest}
+  >
+    {list.map((item: string) => (
+      <option key={item} value={item}>
+        {item}
+        {suffix}
+      </option>
+    ))}
+  </select>
+);
+
+// Move export functionality to a client-side component
+const ExportButton: React.FC<{ onExport: () => void }> = ({ onExport }) => {
+  const handleExport = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    onExport();
+  }, [onExport]);
+
+  return (
+    <button onClick={handleExport}>
+      <FaFileDownload className="ml-2" />
+      تصدير
+    </button>
+  );
+};

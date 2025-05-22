@@ -230,19 +230,19 @@ export default function StatusSubCategoryPage() {
       const district_id = rolesData.data.district_id;
       console.log("User's district ID from role:", district_id);
   
-      let res;
+      let resData;
   
       if (userPermissions.isAdmin) {
         // Admin: Fetch all subcategories
-        res = await fetchWithAuth(`/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
+        resData = await fetch(`https://complaint.top-wp.com/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(true);
         console.log("res", res);
       } else {
         // Non-admin: Filter by district
-        res = await fetchWithAuth(`/items/Status_subcategory?filter[district][_eq]=${district_id}&fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
+        resData = await fetch(`https://complaint.top-wp.com/items/Status_subcategory?filter[district][_eq]=${district_id}&fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(false);
       }
-  
+      const res = await resData.json();
       if (res && res.data) {
         const subCategoriesData = res.data;
   

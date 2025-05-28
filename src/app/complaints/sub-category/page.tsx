@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
 import { exportToCSV } from '@/utils/export';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface SubCategory {
   id: number;
@@ -91,6 +92,7 @@ export default function SubCategoryPage() {
   }
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'Complaint_sub_category', action: 'read' }]}>
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">الفئة الفرعية للشكوى</h1>
@@ -119,5 +121,6 @@ export default function SubCategoryPage() {
         ))}
       </div>
     </div>
+    </PermissionGuard>
   );
 } 

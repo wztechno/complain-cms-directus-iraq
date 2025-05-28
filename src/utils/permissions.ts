@@ -543,21 +543,34 @@ export function applyPermissionFilters(userPermissions: UserPermissionsData): st
  * Check if a complaint matches the user's permissions.
  * Returns true if the user has permission to see the complaint, false otherwise.
  */
-export function complaintMatchesPermissions(complaint: any, permissions: any): boolean {
-  if (!permissions) return true;
+export function complaintMatchesPermissions(complaint: any, permissions: any[]): boolean {
+  if (!permissions || !permissions.length) return true;
   
-  // Check district permissions
-  const districtMatches = !permissions.districtIds || 
-    permissions.districtIds.length === 0 ||
-    permissions.districtIds.includes(complaint.district);
+  // For each permission in the array
+  return permissions.some(permission => {
+    // If there's no specific permission conditions, allow access
+    if (!permission.permissions || !permission.permissions._and) return true;
 
-  // Check status subcategory permissions
-  const statusMatches = !permissions.statusSubcategoryIds ||
-    permissions.statusSubcategoryIds.length === 0 ||
-    permissions.statusSubcategoryIds.includes(complaint.status_subcategory);
+    // Check each condition in the _and array
+    return permission.permissions._and.every((condition: any) => {
+      // Check district condition
+      if (condition.district?._eq !== undefined) {
+        if (complaint.district !== condition.district._eq) return false;
+      }
 
-  // Both conditions must be met
-  return districtMatches && statusMatches;
+      // Check status subcategory condition
+      if (condition.status_subcategory?._in) {
+        if (!condition.status_subcategory._in.includes(complaint.status_subcategory)) return false;
+      }
+
+      // Check complaint subcategory condition
+      if (condition.complaint_subcategory?._in) {
+        if (!condition.complaint_subcategory._in.includes(complaint.Complaint_Subcategory)) return false;
+      }
+
+      return true;
+    });
+  });
 }
 
 /**

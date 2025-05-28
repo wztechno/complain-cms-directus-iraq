@@ -56,8 +56,16 @@ interface Complaint {
   mainCategory?: string;
   responsibleUser?: string;
   [key: string]: any;
+  location?: {
+    id: number;
+    latitude: number;
+    longitude: number;
+    city: string;
+    district: string;
+    district_id: number | null;
+  };
 }
-interface User { firstName: string; lastName: string; }
+// interface User { firstName: string; lastName: string; }
 
 // -----------------------------
 // Main component
@@ -119,6 +127,15 @@ export default function ComplaintsPage() {
       const districtMapTyped = new Map<number, string>();
       districtsData.forEach((d: District) => districtMapTyped.set(d.id, d.name));
 
+      const locationResp = await fetch('https://complaint.top-wp.com/items/location');
+      const locationRespJson = await locationResp.json();
+      const locationData = locationRespJson?.data ?? [];
+      // id → { latitude, longitude }
+      const locationMap = new Map<number, { latitude: number; longitude: number }>();
+      locationData.forEach((loc: any) =>
+        locationMap.set(loc.id, { latitude: loc.latitude, longitude: loc.longitude })
+      );
+
       /* 4️⃣ complaints core list */
       let url = '/items/Complaint';
       if (!admin && perms) {
@@ -128,7 +145,7 @@ export default function ComplaintsPage() {
         if (f.length) url += `?filter[_or]=[${f.join(',')}]`;
       }
       const compResp = await fetchWithAuth(url);
-      const compArr: Complaint[] = await enrichComplaints(compResp.data, districtMapTyped, statusToUser);
+      const compArr: Complaint[] = await enrichComplaints(compResp.data, districtMapTyped, statusToUser, locationMap);
 
       /* 5️⃣ build filter dropdown data */
       setTitleList(unique(compArr.map((c) => c.title || '')));
@@ -187,7 +204,8 @@ export default function ComplaintsPage() {
   async function enrichComplaints(
     data: any[],
     districtMap: Map<number, string>,
-    statusUser: StatusToUserMap
+    statusUser: StatusToUserMap,
+    locationMap: Map<number, { latitude: number; longitude: number }>
   ): Promise<Complaint[]> {
     // Handle ID-only array => fetch objects
     if (data.length && (typeof data[0] === 'string' || typeof data[0] === 'number')) {
@@ -210,11 +228,18 @@ export default function ComplaintsPage() {
         const distName = c.district ? districtMap.get(Number(c.district)) : undefined;
         const subMeta = subRes.data.find((s: any) => String(s.id) === String(c.status_subcategory));
         const respUser = statusUser[String(c.status_subcategory)] ?? 'غير محدد';
+        let locationObj = c.location;
+        if (locationObj && typeof locationObj !== 'object') {
+          // relation stored as id → look up full coords
+          const coords = locationMap.get(Number(locationObj));
+          if (coords) locationObj = { id: Number(locationObj), ...coords };
+        }
         return {
           ...c,
           districtName: distName ?? 'غير محدد',
           mainCategory: subMeta?.status_category?.name ?? null,
-          responsibleUser: respUser
+          responsibleUser: respUser,
+          location: locationObj ?? null
         } as Complaint;
       })
     );
@@ -225,25 +250,32 @@ export default function ComplaintsPage() {
    * ------------------------------------------------*/
   const exportCsv = useCallback((scope: 'all' | 'selected') => {
     if (typeof window === 'undefined') return; // Guard against server-side execution
-    
+  
     const list = scope === 'all' ? filtered : filtered.filter((c) => selectedIds.includes(c.id));
     if (!list.length) return alert('لا توجد شكاوى للتصدير');
-    
+  
     const rows = [
-      ['ID', 'العنوان', 'الوصف', 'نوع الخدمة', 'المحافظة', 'نسبة الإكمال', 'التاريخ'],
-      ...list.map((c) => [
-        c.id,
-        `"${c.title || ''}"`,
-        `"${c.description || ''}"`,
-        `"${c.Service_type || ''}"`,
-        `"${c.districtName || ''}"`,
-        c.completion_percentage || 0,
-        c.date || ''
-      ])
+      ['ID', 'العنوان', 'الوصف', 'نوع الخدمة', 'المحافظة', 'نسبة الإكمال', 'التاريخ', 'الموقع'],
+      ...list.map((c) => {
+        const mapLink = c.location?.latitude && c.location?.longitude
+          ? `"=HYPERLINK(""https://www.google.com/maps?q=${c.location.latitude},${c.location.longitude}"", ""عرض الموقع"")"`
+          : '';
+  
+        return [
+          c.id,
+          `"${c.title || ''}"`,
+          `"${c.description || ''}"`,
+          `"${c.Service_type || ''}"`,
+          `"${c.districtName || ''}"`,
+          c.completion_percentage || 0,
+          c.date || '',
+          mapLink,
+        ];
+      }),
     ]
       .map((r) => r.join(','))
       .join('\n');
-    
+  
     const blob = new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -251,6 +283,7 @@ export default function ComplaintsPage() {
     a.click();
     setShowExportOptions(false);
   }, [filtered, selectedIds]);
+  
 
   /* ------------------------------------------------
    * Render helpers

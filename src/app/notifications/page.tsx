@@ -5,6 +5,7 @@ import { FaPlus, FaTrash, FaBell, FaChevronRight, FaChevronLeft } from 'react-ic
 import { GrFilter } from 'react-icons/gr';
 import { fetchWithAuth } from '@/utils/api';
 import { useRouter } from 'next/navigation';
+import PermissionGuard from '@/components/PermissionGuard';
 
 // Interface for User
 interface User {
@@ -529,6 +530,7 @@ export default function NotificationsPage() {
   const totalPages = Math.ceil(filteredNotifications.length / notificationsPerPage);
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'Notification', action: 'read' }]}>
     <div className="min-h-screen bg-gray-100 flex">
       <main className="flex-1 p-8 mr-64">
         <div className="flex justify-between items-center mb-8">
@@ -1046,5 +1048,6 @@ export default function NotificationsPage() {
         </div>
       )}
     </div>
+    </PermissionGuard>
   );
 } 

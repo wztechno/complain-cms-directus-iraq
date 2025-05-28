@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/utils/api';
 import { getUserPermissions } from '@/utils/permissions';
 import { GrFilter } from 'react-icons/gr';
+import PermissionGuard from '@/components/PermissionGuard';
+import { buildStatusToUserMap, StatusToUserMap } from '@/utils/responsible-users';
 
 interface StatusSubCategory {
   id: number;
@@ -23,6 +25,8 @@ interface ComplaintSubCategory {
 interface District {
   id: number;
   name: string;
+  active?: boolean;
+  [key: string]: unknown;
 }
 
 interface StatusCategory {
@@ -36,6 +40,21 @@ interface StatusSubCategoryWithDetails extends StatusSubCategory {
   statusCategoryDetails?: StatusCategory;
 }
 
+interface RoleData {
+  id: string;
+  name: string;
+  district_id?: number;
+  [key: string]: unknown;
+}
+
+interface StatusSubCategoryOption {
+  id: number;
+  name: string;
+  district?: District;
+  complaint_subcategory?: ComplaintSubCategory;
+  [key: string]: unknown;
+}
+
 export default function StatusSubCategoryPage() {
   const [subCategories, setSubCategories] = useState<StatusSubCategoryWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +64,7 @@ export default function StatusSubCategoryPage() {
   const [complaintSubCategories, setComplaintSubCategories] = useState<ComplaintSubCategory[]>([]);
   const [filteredComplaintSubCategories, setFilteredComplaintSubCategories] = useState<ComplaintSubCategory[]>([]);
   const [filteredNextStatusOptions, setFilteredNextStatusOptions] = useState<StatusSubCategoryWithDetails[]>([]);
+  const [responsibleUsers, setResponsibleUsers] = useState<StatusToUserMap>({});
   const [newSubCategory, setNewSubCategory] = useState({
     name: '',
     status_category: '',
@@ -56,9 +76,8 @@ export default function StatusSubCategoryPage() {
   const router = useRouter();
   const [showFilters, setShowFilters] = useState(false);
 
-
   // Add a state to track active district filtering
-  const [activeDistrictFilter, setActiveDistrictFilter] = useState<string[]>([]);
+  const [activeDistrictFilter, setActiveDistrictFilter] = useState<number | ''>('');
   const [activeStatusCategoryFilter, setActiveStatusCategoryFilter] = useState<string>('');
 
   // Function to fetch complaint subcategories by district ID
@@ -248,13 +267,18 @@ export default function StatusSubCategoryPage() {
       setSubCategories(res.data);
 
       // Fetch complaint subcategories based on user's district or all if admin
-      const complaintSubCategoriesResponse = await fetchWithAuth(`/items/Complaint_sub_category?filter[district][_eq]=${district_id}`);
+      const  complaintSubCategoriesData = await fetch(`https://complaint.top-wp.com/items/Complaint_sub_category?filter[district][_eq]=${district_id}`);
+      const complaintSubCategoriesResponse = await complaintSubCategoriesData.json();
       if (complaintSubCategoriesResponse && complaintSubCategoriesResponse.data) {
         console.log("complaintSubCategories", complaintSubCategoriesResponse.data);
         setComplaintSubCategories(complaintSubCategoriesResponse.data);
         // Also set the filtered list initially to the same as all complaint subcategories
         setFilteredComplaintSubCategories(complaintSubCategoriesResponse.data);
       }
+
+      // Fetch responsible users
+      const responsibleUsersMap = await buildStatusToUserMap();
+      setResponsibleUsers(responsibleUsersMap);
   
       setLoading(false);
     } catch (error) {
@@ -266,28 +290,22 @@ export default function StatusSubCategoryPage() {
 
   const fetchDistricts = async () => {
     try {
-      // Get user info for role matching
       const userInfoStr = localStorage.getItem('user_info');
       const userInfo = userInfoStr ? JSON.parse(userInfoStr) : null;
       const userPermissions = await getUserPermissions();
-      // const isAdmin = userPermissions.isAdmin;
       
       const res = await fetchWithAuth('/items/District?filter[active][_eq]=true');
       if (res && res.data) {
         let districtsData = res.data;
         
-        // Filter districts for non-admin users
         if (!userPermissions.isAdmin && userPermissions.districtIds && userPermissions.districtIds.length > 0) {
           console.log('Filtering districts based on user permissions:', userPermissions.districtIds);
           
-          // Convert to numbers for consistent comparison
           const userDistrictIds = userPermissions.districtIds.map(id => Number(id));
           
-          // If user has a role title, try to match it with districts
           if (userInfo?.role_title && districtsData.length > 0) {
             console.log("Attempting to match role_title with district in fetchDistricts:", userInfo.role_title);
             
-            // English district names that might be in role titles (same mapping as in fetchSubCategories)
             const districtMapping: {[key: string]: string[]} = {
               'baghdad': ['بغداد', 'Baghdad', 'بغداد الكرخ', 'بغداد الرصافة'],
               'basra': ['البصرة', 'Basra', 'البصره'],
@@ -300,61 +318,45 @@ export default function StatusSubCategoryPage() {
               'nineveh': ['نينوى', 'Nineveh'],
               'saladin': ['صلاح الدين', 'Saladin'],
               'babil': ['بابل', 'Babil'],
-              // Same mappings as above
             };
             
-            // Try to match role title with districts
             const roleLower = userInfo.role_title.toLowerCase();
             let matchedDistrictIds: number[] = [];
             
-            // Check all possible mappings
             Object.entries(districtMapping).forEach(([englishName, arabicVariants]) => {
               if (roleLower.includes(englishName)) {
                 console.log(`Found match in fetchDistricts: role contains "${englishName}"`);
-                // Find districts with matching names
-                const matchingDistricts = districtsData.filter((district: any) => 
+                const matchingDistricts = districtsData.filter((district: District) => 
                   arabicVariants.some(variant => 
                     district.name.includes(variant) || variant.includes(district.name)
                   )
                 );
                 
                 if (matchingDistricts.length > 0) {
-                  console.log("Matched districts for dropdown:", matchingDistricts.map((d: any) => ({id: d.id, name: d.name})));
-                  matchedDistrictIds = [...matchedDistrictIds, ...matchingDistricts.map((d: any) => Number(d.id))];
+                  console.log("Matched districts for dropdown:", matchingDistricts.map((d: District) => ({id: d.id, name: d.name})));
+                  matchedDistrictIds = [...matchedDistrictIds, ...matchingDistricts.map((d: District) => Number(d.id))];
                 }
               }
             });
             
-            // If we found matches, add them to userDistrictIds
             if (matchedDistrictIds.length > 0) {
-              console.log("Adding matched district IDs from role for dropdown:", matchedDistrictIds);
-              // Combine both sets of IDs and remove duplicates
               const combinedIds = [...new Set([...userDistrictIds, ...matchedDistrictIds])];
-              console.log("Combined district IDs for dropdown:", combinedIds);
-              
-              // Filter districts based on combined IDs
               districtsData = districtsData.filter((district: District) => 
                 combinedIds.includes(Number(district.id))
               );
             } else {
-              // Fallback to original district IDs if no matches found
               districtsData = districtsData.filter((district: District) => 
                 userDistrictIds.includes(Number(district.id))
               );
             }
           } else {
-            // Standard filtering if no role title
             districtsData = districtsData.filter((district: District) => 
               userDistrictIds.includes(Number(district.id))
             );
           }
-          
-          console.log(`Filtered to ${districtsData.length} districts based on user permissions`);
         }
         
         setDistricts(districtsData);
-      } else {
-        throw new Error('Failed to fetch districts');
       }
     } catch (error) {
       console.error('Error fetching districts:', error);
@@ -407,16 +409,6 @@ export default function StatusSubCategoryPage() {
 
   const handleAddSubCategory = async () => {
     try {
-      // Check permissions before adding
-      const userPermissions = await getUserPermissions();
-      // if (!userPermissions.isAdmin && 
-      //     newSubCategory.district && 
-      //     userPermissions.districtIds && 
-      //     !userPermissions.districtIds.includes(Number(newSubCategory.district))) {
-      //   alert('ليس لديك صلاحية لإضافة فئة فرعية لهذه المحافظة');
-      //   return;
-      // }
-      
       const res = await fetchWithAuth('/items/Status_subcategory', {
         method: 'POST',
         body: JSON.stringify({
@@ -498,8 +490,7 @@ export default function StatusSubCategoryPage() {
         console.log(`Found ${data.data.length} matching next status options from API:`, data.data);
         
         // Make sure we have all fields needed for display
-        const processedOptions = data.data.map((option: any) => {
-          // Ensure the option has all required fields
+        const processedOptions = data.data.map((option: StatusSubCategoryOption) => {
           return {
             ...option,
             id: option.id,
@@ -556,6 +547,7 @@ export default function StatusSubCategoryPage() {
   }
   
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'Status_subcategory', action: 'read' }]}>
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">الفئة الفرعية للحالة</h1>
@@ -585,41 +577,66 @@ export default function StatusSubCategoryPage() {
       {showFilters && (   
         <div className="mb-6 bg-white p-4 rounded-lg shadow">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* District Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                المحافظة
+              </label>
+              <select
+                value={activeDistrictFilter}
+                onChange={(e) => setActiveDistrictFilter(e.target.value ? Number(e.target.value) : '')}
+                className="w-full border border-gray-300 rounded-lg p-2"
+              >
+                <option value="">جميع المحافظات</option>
+                {districts.map((district) => (
+                  <option key={district.id} value={district.id}>
+                    {district.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Status Category Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              الفئة الرئيسية
-            </label>
-            <select
-              value={activeStatusCategoryFilter}
-              onChange={(e) => setActiveStatusCategoryFilter(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg p-2"
-            >
-              <option value="">جميع الفئات</option>
-              {statusCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                الفئة الرئيسية
+              </label>
+              <select
+                value={activeStatusCategoryFilter}
+                onChange={(e) => setActiveStatusCategoryFilter(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg p-2"
+              >
+                <option value="">جميع الفئات</option>
+                {statusCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
       )}
 
-      {activeDistrictFilter.length > 0 && (
+      {/* Active Filters Display */}
+      {(activeDistrictFilter || activeStatusCategoryFilter) && (
         <div className="mb-6 bg-blue-50 p-3 rounded-lg border border-blue-100">
           <div className="flex items-center text-blue-800">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clipRule="evenodd" />
             </svg>
             <span className="font-semibold ml-1">تصفية حسب:</span>
-            <div className="ml-3 text-blue-600">
-              {activeDistrictFilter.map((filter, index) => (
-                <span key={index} className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded mr-2">
-                  {filter}
+            <div className="ml-3 text-blue-600 flex gap-2">
+              {activeDistrictFilter && (
+                <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                  {districts.find(d => d.id === activeDistrictFilter)?.name}
                 </span>
-              ))}
+              )}
+              {activeStatusCategoryFilter && (
+                <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                  {statusCategories.find(c => c.id === Number(activeStatusCategoryFilter))?.name}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -628,6 +645,10 @@ export default function StatusSubCategoryPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {subCategories
           .filter(subCategory => {
+            // Apply district filter
+            if (activeDistrictFilter && subCategory.district?.id !== activeDistrictFilter) {
+              return false;
+            }
             // Apply status category filter
             if (activeStatusCategoryFilter && subCategory.status_category?.id !== Number(activeStatusCategoryFilter)) {
               return false;
@@ -641,23 +662,24 @@ export default function StatusSubCategoryPage() {
             onClick={() => router.push(`/status/sub-category/${subCategory.id}`)}
           >
             <div className="flex justify-between items-start mb-4">
+              <span>{subCategory.complaint_subcategory?.name}</span>
               <span className="text-gray-500">
                 {subCategory.status_category?.name}
               </span>
-              <button className="text-gray-400 hover:text-gray-600">
-                <span className="text-2xl">⋮</span>
-              </button>
             </div>
 
             <h3 className="text-xl font-semibold text-right mb-4">{subCategory.name}</h3>
 
             <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
-              <span>{subCategory.complaint_subcategory?.name}</span>
+              <div className="text-right text-sm text-gray-600">
+                <span className="font-semibold ml-2">المسؤول:</span>
+              <span>{responsibleUsers[String(subCategory.id)] || 'غير محدد'}</span>
+              </div>
               <span>{subCategory.district?.name}</span>
             </div>
 
             <div className="border-t pt-4 mt-2">
-              <div className="text-right text-sm text-gray-600">
+              <div className="text-right text-sm text-gray-600 mb-2">
                 <span className="font-semibold ml-2">الحالة التالية:</span>
                 <span>{subCategory.nextstatus?.name || 'ابلاغ المواطن بضرورة الترخيص'}</span>
               </div>
@@ -816,5 +838,6 @@ export default function StatusSubCategoryPage() {
         </div>
       )}
     </div>
+    </PermissionGuard>
   );
 } 

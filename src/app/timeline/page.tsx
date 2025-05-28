@@ -3,8 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import TimelineTableRow from '@/components/TimelineTableRow';
 import { GrFilter } from 'react-icons/gr';
+import { FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import { fetchWithAuth } from '@/utils/api';
 import { exportToCSV } from '@/utils/export';
+import { buildStatusToUserMap, StatusToUserMap } from '@/utils/responsible-users';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface TimelineEntry {
   id: number;
@@ -16,6 +19,7 @@ interface TimelineEntry {
   complaint_name?: string;
   user_name?: string;
   status_name?: string;
+  responsible_user?: string;
 }
 
 export default function TimelinePage() {
@@ -23,6 +27,8 @@ export default function TimelinePage() {
   const [filteredComplaints, setFilteredComplaints] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
@@ -47,6 +53,9 @@ export default function TimelinePage() {
         fetchWithAuth('/items/Status_subcategory')
       ]);
     
+      // Get responsible users map
+      const responsibleUsersMap = await buildStatusToUserMap();
+    
       const timelineData = timelineRes.data;
     
       // Map: complaint.id -> complaint.title and complaint.user (user_id)
@@ -69,13 +78,15 @@ export default function TimelinePage() {
       const enriched = timelineData.map((entry: any) => {
         const complaint = complaintMap[entry.complaint_id];
         const userName = complaint?.user ? userMap[String(complaint.user)] : '—';
+        const responsibleUser = responsibleUsersMap[String(entry.status_subcategory)] || 'غير محدد';
     //     console.log("complaint",complaint);
     // console.log("user",userName);
         return {
           ...entry,
           complaint_name: complaint?.title || '—',
           user_name: userName,
-          status_name: statusMap[entry.status_subcategory] || '—'
+          status_name: statusMap[entry.status_subcategory] || '—',
+          responsible_user: responsibleUser
         };
       });
     
@@ -132,6 +143,7 @@ export default function TimelinePage() {
   }
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'ComplaintTimeline', action: 'read' }]}>
     <div className="min-h-screen bg-gray-100 p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold mb-6 text-right">الحالة الزمنية للشكاوى</h1>
@@ -221,17 +233,51 @@ export default function TimelinePage() {
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">الشكوى</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">المواطن</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">الحالة</th>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">المسؤول</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">تاريخ الحالة</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredComplaints.map((complaint) => (
-                <TimelineTableRow key={complaint.id} complaint={complaint} />
+              {filteredComplaints
+                .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                .map((complaint) => (
+                  <TimelineTableRow key={complaint.id} complaint={complaint} />
               ))}
             </tbody>
           </table>
+          
+          {/* Pagination Controls */}
+          <div className="mt-8 flex justify-between items-center">
+            <div className="text-sm text-gray-600">
+              عرض {Math.min((currentPage - 1) * itemsPerPage + 1, filteredComplaints.length)} إلى{' '}
+              {Math.min(currentPage * itemsPerPage, filteredComplaints.length)} من{' '}
+              {filteredComplaints.length} سجل
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className={`p-2 rounded-lg ${currentPage === 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#4664AD] text-white hover:bg-[#3A5499]'}`}
+              >
+                <FaChevronRight />
+              </button>
+              <div className="flex items-center justify-center px-4 py-2 bg-white rounded-lg shadow-sm">
+                <span>{currentPage}</span>
+                <span className="mx-2">/</span>
+                <span>{Math.ceil(filteredComplaints.length / itemsPerPage) || 1}</span>
+              </div>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredComplaints.length / itemsPerPage), prev + 1))}
+                disabled={currentPage === Math.ceil(filteredComplaints.length / itemsPerPage)}
+                className={`p-2 rounded-lg ${currentPage === Math.ceil(filteredComplaints.length / itemsPerPage) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#4664AD] text-white hover:bg-[#3A5499]'}`}
+              >
+                <FaChevronLeft />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
+    </PermissionGuard>
   );
 }

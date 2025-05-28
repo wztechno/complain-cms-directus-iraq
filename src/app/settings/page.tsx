@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { fetchWithAuth } from '@/utils/api';
 import { BsFilter, BsPersonFill, BsChevronDown } from 'react-icons/bs';
 import { GrFilter } from 'react-icons/gr';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface Role {
   id: string;
@@ -79,8 +80,14 @@ interface CollectionPermissions {
 
 interface UserPolicy {
   id: string;
-  user_id: string;  // Changed to single string
-  policy_id: string; // Changed to single string
+  user_id: string[];
+  policy_id: string;
+}
+
+interface CustomCondition {
+  collection: string;
+  value: string;
+  value2?: string;
 }
 
 const createEmptyCollectionPermissions = (): CollectionPermissions => {
@@ -88,11 +95,12 @@ const createEmptyCollectionPermissions = (): CollectionPermissions => {
     Complaint: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Complaint_main_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Complaint_sub_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
+    Complaint_ratings: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     District: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Status_category: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Status_subcategory: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
     Users: { create: false, read: false, update: false, delete: false, share: false, customConditions: {} },
-    notification: { create: true, read: true, update: false, delete: false, share: false, customConditions: {} },
+    notification: { create: true, read: false, update: false, delete: false, share: false, customConditions: {} },
     notification_users: { create: true, read: true, update: false, delete: false, share: false, customConditions: {} },
     user_policies: { create: true, read: true, update: true, delete: true, share: true, customConditions: {} },
     directus_policies: { create: true, read: true, update: true, delete: true, share: true, customConditions: {} },
@@ -732,409 +740,393 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-8 mr-64">
-      {/* Policies Section */}
-      <div>
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold">السياسات</h1>
-          <div className="flex gap-3">
-          <button 
-              onClick={() => setShowFilters(!showFilters)}
-              className="h-10 w-10 hover:bg-[#4664AD] text-[#4664AD] hover:text-[#F9FAFB] p-2 rounded-lg bg-[#F9FAFB] flex items-center justify-center"
-            >
-              <GrFilter />
-          </button>
+    <PermissionGuard
+      requiredPermissions={[
+        { resource: 'policies', action: 'read' },
+        { resource: 'policies', action: 'update' }
+      ]}
+    >
+      <div className="min-h-screen bg-gray-100 p-8 mr-64">
+        {/* Policies Section */}
+        <div>
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-2xl font-bold">السياسات</h1>
+            <div className="flex gap-3">
             <button 
-              onClick={() => {
-                setIsEditing(false);
-                setEditingPolicyId(null);
-                setNewPolicy({
-                  name: '',
-                  description: '',
-                  enforce_tfa: false,
-                  admin_access: false,
-                  app_access: true,
-                  roles: [],
-                  permissions: {},
-                  policy_user_id: []
-                });
-                setUserPermissions([]);
-                setSelectedUsers([]);
-                setSelectedRole('');
-                setCollectionPermissions(createEmptyCollectionPermissions());
-                setShowAddPolicy(true);
-              }}
-              className="bg-[#4664AD] text-white px-4 py-2 rounded-lg text-sm"
-            >
-              إضافة سياسة جديدة
+                onClick={() => setShowFilters(!showFilters)}
+                className="h-10 w-10 hover:bg-[#4664AD] text-[#4664AD] hover:text-[#F9FAFB] p-2 rounded-lg bg-[#F9FAFB] flex items-center justify-center"
+              >
+                <GrFilter />
             </button>
-          </div>
-        </div>
-
-        {/* Search Bar */}
-        {showFilters && (
-        <div className="mb-6">
-          <div className="relative">
-            <input
-              type="text"
-              value={pageSearchQuery}
-              onChange={(e) => setPageSearchQuery(e.target.value)}
-              placeholder="ابحث عن سياسة أو مستخدم..."
-              className="w-full border border-gray-300 rounded-lg p-2 pr-10 text-right"
-              dir="rtl"
-            />
-            {pageSearchQuery && (
-              <button
-                onClick={() => setPageSearchQuery('')}
-                className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+              <button 
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditingPolicyId(null);
+                  setNewPolicy({
+                    name: '',
+                    description: '',
+                    enforce_tfa: false,
+                    admin_access: false,
+                    app_access: true,
+                    roles: [],
+                    permissions: {},
+                    policy_user_id: []
+                  });
+                  setUserPermissions([]);
+                  setSelectedUsers([]);
+                  setSelectedRole('');
+                  setCollectionPermissions(createEmptyCollectionPermissions());
+                  setShowAddPolicy(true);
+                }}
+                className="bg-[#4664AD] text-white px-4 py-2 rounded-lg text-sm"
               >
-                ✕
+                إضافة سياسة جديدة
               </button>
-            )}
-          </div>
-        </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {getFilteredPolicies().map((policy) => {
-            // Get users assigned to this policy through user_policies
-            const policyUsers = userPolicies
-              .filter(up => up.policy_id.includes(policy.id))
-              .flatMap(up => up.user_id)
-              .map(userId => users.find(user => user.id === userId))
-              .filter(Boolean) as User[];
-
-            return (
-              <div
-                key={policy.id}
-                className="bg-white rounded-xl shadow-sm p-4"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <button 
-                    onClick={() => handleEditPolicy(policy)}
-                    className="text-[#4664AD] hover:text-[#3A5499] text-sm"
-                  >
-                    تعديل
-                  </button>
-                  {/* <span className="text-sm text-gray-500">
-                    {new Date(policy.created_at || '').toLocaleDateString('ar-EG')}
-                  </span> */}
-                </div>
-
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium">{policy.name}</h3>
-                </div>
-
-                {policy.description && (
-                  <p className="text-gray-600 text-sm mb-4">{policy.description}</p>
-                )}
-
-                <div className="flex justify-between border-t pt-2">
-                  <div className="text-sm text-gray-500">
-                    {policy.permissions?.district && `المحافظة: ${
-                      districts.find(d => d.id.toString() === policy.permissions?.district)?.name
-                    }`}
-                  </div>
-                  <div className="flex items-center">
-                    {policyUsers.length > 0 && (
-                      <div className="flex -space-x-2 rtl:space-x-reverse">
-                        {[...Array(Math.min(2, policyUsers.length))].map((_, index) => (
-                          <div
-                            key={index}
-                            className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center"
-                          >
-                            <BsPersonFill size={16} className="text-white" />
-                          </div>
-                        ))}
-                        {policyUsers.length > 2 && (
-                          <div className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center">
-                            <span className="text-white text-xs font-medium">+{policyUsers.length - 2}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Updated Add/Edit Policy Modal */}
-      {showAddPolicy && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto">
-          <div className="bg-white max-h-[94vh] overflow-y-auto rounded-lg p-6 w-full max-w-4xl m-4">
-            <h2 className="text-2xl font-bold mb-6 text-right">
-              {isEditing ? 'تعديل السياسة' : 'إضافة سياسة جديدة'}
-            </h2>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                  اسم السياسة
-                </label>
-                <input
-                  type="text"
-                  value={newPolicy.name}
-                  onChange={(e) => setNewPolicy({ ...newPolicy, name: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                  dir="rtl"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                  الوصف
-                </label>
-                <textarea
-                  value={newPolicy.description}
-                  onChange={(e) => setNewPolicy({ ...newPolicy, description: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                  rows={3}
-                  dir="rtl"
-                />
-              </div>
-
-              {/* <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                  الدور
-                </label>
-                <select
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                  dir="rtl"
-                >
-                  <option value="">اختر الدور</option>
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </div> */}
-
-              {/* User Assignment Section */}
-              <div className="border rounded-lg p-6 mb-6 bg-white">
-                <h3 className="text-xl font-semibold mb-4 text-right">تعيين المستخدمين</h3>
-                
-                <div className="space-y-4">
-                  {/* Searchable Dropdown */}
-                  <div className="relative" ref={dropdownRef}>
-                    <div 
-                      className="flex items-center justify-between border border-gray-300 rounded-lg p-2 cursor-pointer"
-                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    >
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value);
-                          setIsDropdownOpen(true);
-                        }}
-                        placeholder="ابحث عن مستخدم..."
-                        className="w-full border-none focus:outline-none text-right"
-                        dir="rtl"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <BsChevronDown className={`transform transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                    </div>
-
-                    {isDropdownOpen && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {getAvailableUsers().length > 0 ? (
-                          getAvailableUsers().map((user) => (
-                            <div
-                              key={user.id}
-                              className="p-2 hover:bg-gray-100 cursor-pointer text-right"
-                              onClick={() => handleUserSelect(user.id)}
-                            >
-                              {user.first_name} {user.last_name} ({user.email})
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-2 text-right text-gray-500">
-                            لا يوجد مستخدمين
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* List of assigned users */}
-                  <div className="space-y-2">
-                    {selectedUsers.map((userId) => {
-                      const user = users.find(u => u.id === userId);
-                      return (
-                        <div key={userId} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                          <div>
-                            {user ? (
-                              <span>
-                                {user.first_name} {user.last_name} ({user.email})
-                              </span>
-                            ) : (
-                              <span>Unknown User (ID: {userId})</span>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => {
-                              setSelectedUsers(selectedUsers.filter(id => id !== userId));
-                              // Also remove from userPermissions if exists
-                              const userPermIndex = userPermissions.findIndex(up => up.userId === userId);
-                              if (userPermIndex !== -1) {
-                                handleRemoveUserPermission(userPermIndex);
-                              }
-                            }}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            حذف
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Permissions Section */}
-              <div className="border rounded-lg p-6 mb-6 bg-white">
-                <h3 className="text-xl font-semibold mb-4 text-right">صلاحيات الوصول</h3>
-                <div className="space-y-4">
-                  {/* Add header row for the permission columns */}
-                  <div className="grid grid-cols-12 gap-4 items-center mb-2 border-b pb-2">
-                    <div className="col-span-4 text-right font-bold">المجموعة</div>
-                    <div className="col-span-8 grid grid-cols-6 gap-2">
-                      <div className="flex justify-center font-bold">انشاء</div>
-                      <div className="flex justify-center font-bold">قراءة</div>
-                      <div className="flex justify-center font-bold">تعديل</div>
-                      <div className="flex justify-center font-bold">حذف</div>
-                      <div className="flex justify-center font-bold">مشاركة</div>
-                      <div className="flex justify-center font-bold">تخصيص</div>
-                    </div>
-                  </div>
-                                  
-                  {[
-                    { name: 'Complaint', label: 'الشكوى', hasCustom: true },
-                    { name: 'Complaint_main_category', label: 'الفئة الرئيسية للشكوى', hasCustom: false },
-                    { name: 'Complaint_sub_category', label: 'الفئة الفرعية للشكوى', hasCustom: false },
-                    { name: 'District', label: 'المحافظة', hasCustom: false },
-                    { name: 'Status_category', label: 'الفئة الرئيسية للحالة', hasCustom: false },
-                    { name: 'Status_subcategory', label: 'الفئة الفرعية للحالة', hasCustom: true },
-                    { name: 'Users', label: 'المستخدمين', hasCustom: false },
-                    { name: 'user_policies', label: 'السياسات المخصصة للمستخدم', hasCustom: false },
-                    { name: 'directus_policies', label: 'السياسات', hasCustom: false },
-                    { name: 'directus_permissions', label: 'الصلاحيات', hasCustom: false },
-                    { name: 'notification', label: 'الإشعارات', hasCustom: false },
-                    { name: 'notification_users', label: 'المستخدمين المشتركين في الإشعارات', hasCustom: false },
-                  ].map((collection) => (
-                    <div key={collection.name} className="grid grid-cols-12 gap-4 items-center">
-                      <div className="col-span-4 text-right">{collection.label}</div>
-                      <div className="col-span-8 grid grid-cols-6 gap-2">
-                        {['create', 'read', 'update', 'delete', 'share'].map((action) => (
-                          <div key={action} className="flex justify-center">
-                            <button
-                              onClick={() => handlePermissionToggle(collection.name, action as keyof typeof collectionPermissions[string])}
-                              className={`w-5 h-5 rounded cursor-pointer transition-colors duration-200 ${
-                                collectionPermissions[collection.name][action as keyof typeof collectionPermissions[string]]
-                                  ? 'bg-[#4664AD] hover:bg-[#3A5499]'
-                                  : 'bg-gray-200 hover:bg-gray-300'
-                              }`}
-                            />
-                          </div>
-                        ))}
-                        {collection.hasCustom && (
-                          <div className="flex justify-center">
-                            <button
-                              onClick={() => handleOpenCustomConditions(collection.name)}
-                              className="px-2 py-1 text-xs bg-[#4664AD] text-white rounded hover:bg-[#3A5499]"
-                            >
-                              تخصيص
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center mt-6">
-                <button
-                  onClick={() => setShowAddPolicy(false)}
-                  className="text-gray-600 hover:text-gray-800"
-                >
-                  إلغاء
-                </button>
-                <button
-                  onClick={handleSavePolicy}
-                  className="bg-[#4664AD] text-white px-6 py-2 rounded-lg hover:bg-[#3A5499]"
-                >
-                  حفظ
-                </button>
-              </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Custom Conditions Modal */}
-      {showCustomConditionsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4 text-right">
-              تخصيص الصلاحيات - {selectedCollection === 'Status_subcategory' ? 'الفئة الفرعية للحالة' :
-                                selectedCollection === 'District' ? 'المحافظة' :
-                                selectedCollection === 'Complaint' ? 'الشكوى' : ''}
-            </h2>
-
-            <div className="space-y-4">
-              {selectedCollection === 'Status_subcategory' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                    الفئة الفرعية للحالة
-                  </label>
-                  <select
-                    value={customConditionValue}
-                    onChange={(e) => setCustomConditionValue(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                    dir="rtl"
-                  >
-                    <option value="">اختر الفئة الفرعية للحالة</option>
-                    {subCategories.map(sub => (
-                      <option key={sub.id} value={sub.id}>{sub.name}</option>
-                    ))}
-                  </select>
-                </div>
+          {/* Search Bar */}
+          {showFilters && (
+          <div className="mb-6">
+            <div className="relative">
+              <input
+                type="text"
+                value={pageSearchQuery}
+                onChange={(e) => setPageSearchQuery(e.target.value)}
+                placeholder="ابحث عن سياسة أو مستخدم..."
+                className="w-full border border-gray-300 rounded-lg p-2 pr-10 text-right"
+                dir="rtl"
+              />
+              {pageSearchQuery && (
+                <button
+                  onClick={() => setPageSearchQuery('')}
+                  className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
               )}
+            </div>
+          </div>
+          )}
 
-              {selectedCollection === 'District' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {getFilteredPolicies().map((policy) => {
+              // Get users assigned to this policy through user_policies
+              const policyUsers = userPolicies
+                .filter(up => up.policy_id.includes(policy.id))
+                .flatMap(up => up.user_id)
+                .map(userId => users.find(user => user.id === userId))
+                .filter(Boolean) as User[];
+
+              return (
+                <div
+                  key={policy.id}
+                  className="bg-white rounded-xl shadow-sm p-4"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <button 
+                      onClick={() => handleEditPolicy(policy)}
+                      className="text-[#4664AD] hover:text-[#3A5499] text-sm"
+                    >
+                      تعديل
+                    </button>
+                    {/* <span className="text-sm text-gray-500">
+                      {new Date(policy.created_at || '').toLocaleDateString('ar-EG')}
+                    </span> */}
+                  </div>
+
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-medium">{policy.name}</h3>
+                  </div>
+
+                  {policy.description && (
+                    <p className="text-gray-600 text-sm mb-4">{policy.description}</p>
+                  )}
+
+                  <div className="flex justify-between border-t pt-2">
+                    <div className="text-sm text-gray-500">
+                      {policy.permissions?.district && `المحافظة: ${
+                        districts.find(d => d.id.toString() === policy.permissions?.district)?.name
+                      }`}
+                    </div>
+                    <div className="flex items-center">
+                      {policyUsers.length > 0 && (
+                        <div className="flex -space-x-2 rtl:space-x-reverse">
+                          {[...Array(Math.min(2, policyUsers.length))].map((_, index) => (
+                            <div
+                              key={index}
+                              className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center"
+                            >
+                              <BsPersonFill size={16} className="text-white" />
+                            </div>
+                          ))}
+                          {policyUsers.length > 2 && (
+                            <div className="w-7 h-7 rounded-full bg-[#4664AD] flex items-center justify-center">
+                              <span className="text-white text-xs font-medium">+{policyUsers.length - 2}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Updated Add/Edit Policy Modal */}
+        {showAddPolicy && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto">
+            <div className="bg-white max-h-[94vh] overflow-y-auto rounded-lg p-6 w-full max-w-4xl m-4">
+              <h2 className="text-2xl font-bold mb-6 text-right">
+                {isEditing ? 'تعديل السياسة' : 'إضافة سياسة جديدة'}
+              </h2>
+
+              <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                    معرف المحافظة
+                    اسم السياسة
+                  </label>
+                  <input
+                    type="text"
+                    value={newPolicy.name}
+                    onChange={(e) => setNewPolicy({ ...newPolicy, name: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                    dir="rtl"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                    الوصف
+                  </label>
+                  <textarea
+                    value={newPolicy.description}
+                    onChange={(e) => setNewPolicy({ ...newPolicy, description: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                    rows={3}
+                    dir="rtl"
+                  />
+                </div>
+
+                {/* <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                    الدور
                   </label>
                   <select
-                    value={customConditionValue}
-                    onChange={(e) => setCustomConditionValue(e.target.value)}
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg p-2 text-right"
                     dir="rtl"
                   >
-                    <option value="">اختر المحافظة</option>
-                    {districts.map((district) => (
-                      <option key={district.id} value={district.id}>
-                        {district.name}
+                    <option value="">اختر الدور</option>
+                    {roles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
                       </option>
                     ))}
                   </select>
-                </div>
-              )}
+                </div> */}
 
-              {selectedCollection === 'Complaint' && (
-                <div className="space-y-4">
-                  {/* District Selection */}
+                {/* User Assignment Section */}
+                <div className="border rounded-lg p-6 mb-6 bg-white">
+                  <h3 className="text-xl font-semibold mb-4 text-right">تعيين المستخدمين</h3>
+                  
+                  <div className="space-y-4">
+                    {/* Searchable Dropdown */}
+                    <div className="relative" ref={dropdownRef}>
+                      <div 
+                        className="flex items-center justify-between border border-gray-300 rounded-lg p-2 cursor-pointer"
+                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      >
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setIsDropdownOpen(true);
+                          }}
+                          placeholder="ابحث عن مستخدم..."
+                          className="w-full border-none focus:outline-none text-right"
+                          dir="rtl"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <BsChevronDown className={`transform transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                      </div>
+
+                      {isDropdownOpen && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {getAvailableUsers().length > 0 ? (
+                            getAvailableUsers().map((user) => (
+                              <div
+                                key={user.id}
+                                className="p-2 hover:bg-gray-100 cursor-pointer text-right"
+                                onClick={() => handleUserSelect(user.id)}
+                              >
+                                {user.first_name} {user.last_name} ({user.email})
+                              </div>
+                            ))
+                          ) : (
+                            <div className="p-2 text-right text-gray-500">
+                              لا يوجد مستخدمين
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* List of assigned users */}
+                    <div className="space-y-2">
+                      {selectedUsers.map((userId) => {
+                        const user = users.find(u => u.id === userId);
+                        return (
+                          <div key={userId} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                            <div>
+                              {user ? (
+                                <span>
+                                  {user.first_name} {user.last_name} ({user.email})
+                                </span>
+                              ) : (
+                                <span>Unknown User (ID: {userId})</span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setSelectedUsers(selectedUsers.filter(id => id !== userId));
+                                // Also remove from userPermissions if exists
+                                const userPermIndex = userPermissions.findIndex(up => up.userId === userId);
+                                if (userPermIndex !== -1) {
+                                  handleRemoveUserPermission(userPermIndex);
+                                }
+                              }}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              حذف
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Permissions Section */}
+                <div className="border rounded-lg p-6 mb-6 bg-white">
+                  <h3 className="text-xl font-semibold mb-4 text-right">صلاحيات الوصول</h3>
+                  <div className="space-y-4">
+                    {/* Add header row for the permission columns */}
+                    <div className="grid grid-cols-12 gap-4 items-center mb-2 border-b pb-2">
+                      <div className="col-span-4 text-right font-bold">المجموعة</div>
+                      <div className="col-span-8 grid grid-cols-6 gap-2">
+                        <div className="flex justify-center font-bold">انشاء</div>
+                        <div className="flex justify-center font-bold">قراءة</div>
+                        <div className="flex justify-center font-bold">تعديل</div>
+                        <div className="flex justify-center font-bold">حذف</div>
+                        <div className="flex justify-center font-bold">مشاركة</div>
+                        <div className="flex justify-center font-bold">تخصيص</div>
+                      </div>
+                    </div>
+                                    
+                    {[
+                      { name: 'Complaint', label: 'الشكوى', hasCustom: true },
+                      { name: 'Complaint_main_category', label: 'الفئة الرئيسية للشكوى', hasCustom: false },
+                      { name: 'Complaint_sub_category', label: 'الفئة الفرعية للشكوى', hasCustom: false },
+                      { name: 'Complaint_ratings', label: 'تقييمات الشكوى', hasCustom: false },
+                      { name: 'District', label: 'المحافظة', hasCustom: false },
+                      { name: 'Status_category', label: 'الفئة الرئيسية للحالة', hasCustom: false },
+                      { name: 'Status_subcategory', label: 'الفئة الفرعية للحالة', hasCustom: true },
+                      { name: 'Users', label: 'المستخدمين', hasCustom: false },
+                      { name: 'user_policies', label: 'السياسات المخصصة للمستخدم', hasCustom: false },
+                      { name: 'directus_policies', label: 'السياسات', hasCustom: false },
+                      { name: 'directus_permissions', label: 'الصلاحيات', hasCustom: false },
+                      { name: 'notification', label: 'الإشعارات', hasCustom: false },
+                      { name: 'notification_users', label: 'المستخدمين المشتركين في الإشعارات', hasCustom: false },
+                    ].map((collection) => (
+                      <div key={collection.name} className="grid grid-cols-12 gap-4 items-center">
+                        <div className="col-span-4 text-right">{collection.label}</div>
+                        <div className="col-span-8 grid grid-cols-6 gap-2">
+                          {['create', 'read', 'update', 'delete', 'share'].map((action) => (
+                            <div key={action} className="flex justify-center">
+                              <button
+                                onClick={() => handlePermissionToggle(collection.name, action as keyof typeof collectionPermissions[string])}
+                                className={`w-5 h-5 rounded cursor-pointer transition-colors duration-200 ${
+                                  collectionPermissions[collection.name][action as keyof typeof collectionPermissions[string]]
+                                    ? 'bg-[#4664AD] hover:bg-[#3A5499]'
+                                    : 'bg-gray-200 hover:bg-gray-300'
+                                }`}
+                              />
+                            </div>
+                          ))}
+                          {collection.hasCustom && (
+                            <div className="flex justify-center">
+                              <button
+                                onClick={() => handleOpenCustomConditions(collection.name)}
+                                className="px-2 py-1 text-xs bg-[#4664AD] text-white rounded hover:bg-[#3A5499]"
+                              >
+                                تخصيص
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center mt-6">
+                  <button
+                    onClick={() => setShowAddPolicy(false)}
+                    className="text-gray-600 hover:text-gray-800"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={handleSavePolicy}
+                    className="bg-[#4664AD] text-white px-6 py-2 rounded-lg hover:bg-[#3A5499]"
+                  >
+                    حفظ
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Conditions Modal */}
+        {showCustomConditionsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h2 className="text-xl font-bold mb-4 text-right">
+                تخصيص الصلاحيات - {selectedCollection === 'Status_subcategory' ? 'الفئة الفرعية للحالة' :
+                                  selectedCollection === 'District' ? 'المحافظة' :
+                                  selectedCollection === 'Complaint' ? 'الشكوى' : ''}
+              </h2>
+
+              <div className="space-y-4">
+                {selectedCollection === 'Status_subcategory' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                      المحافظة
+                      الفئة الفرعية للحالة
+                    </label>
+                    <select
+                      value={customConditionValue}
+                      onChange={(e) => setCustomConditionValue(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                      dir="rtl"
+                    >
+                      <option value="">اختر الفئة الفرعية للحالة</option>
+                      {subCategories.map(sub => (
+                        <option key={sub.id} value={sub.id}>{sub.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {selectedCollection === 'District' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                      معرف المحافظة
                     </label>
                     <select
                       value={customConditionValue}
@@ -1150,45 +1142,69 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
-                  
-                  {/* Status Subcategory Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                      الفئة الفرعية للحالة
-                    </label>
-                    <select
-                      value={customConditionValue2}
-                      onChange={(e) => setCustomConditionValue2(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg p-2 text-right"
-                      dir="rtl"
-                    >
-                      <option value="">اختر الفئة الفرعية للحالة</option>
-                      {subCategories.map(sub => (
-                        <option key={sub.id} value={sub.id}>{sub.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setShowCustomConditionsModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
-                >
-                  إلغاء
-                </button>
-                <button
-                  onClick={handleSaveCustomConditions}
-                  className="px-4 py-2 bg-[#4664AD] text-white rounded-lg"
-                >
-                  حفظ
-                </button>
+                {selectedCollection === 'Complaint' && (
+                  <div className="space-y-4">
+                    {/* District Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                        المحافظة
+                      </label>
+                      <select
+                        value={customConditionValue}
+                        onChange={(e) => setCustomConditionValue(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                        dir="rtl"
+                      >
+                        <option value="">اختر المحافظة</option>
+                        {districts.map((district) => (
+                          <option key={district.id} value={district.id}>
+                            {district.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    {/* Status Subcategory Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                        الفئة الفرعية للحالة
+                      </label>
+                      <select
+                        value={customConditionValue2}
+                        onChange={(e) => setCustomConditionValue2(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg p-2 text-right"
+                        dir="rtl"
+                      >
+                        <option value="">اختر الفئة الفرعية للحالة</option>
+                        {subCategories.map(sub => (
+                          <option key={sub.id} value={sub.id}>{sub.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setShowCustomConditionsModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={handleSaveCustomConditions}
+                    className="px-4 py-2 bg-[#4664AD] text-white rounded-lg"
+                  >
+                    حفظ
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </PermissionGuard>
   );
 }

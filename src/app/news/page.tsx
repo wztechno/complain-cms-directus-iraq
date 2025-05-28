@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FaCalendarAlt, FaFilter, FaPlus, FaPen, FaTrash } from 'react-icons/fa';
 import { GrFilter } from 'react-icons/gr';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface NewsItem {
   id: string;
@@ -240,6 +241,7 @@ export default function NewsPage() {
   };
   
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'News', action: 'read' }]}>
     <div className="min-h-screen bg-gray-100 flex">
       <main className="flex-1 p-8 mr-64">
         <div className="mb-6 flex flex-wrap justify-between items-center">
@@ -393,5 +395,6 @@ export default function NewsPage() {
         )}
       </main>
     </div>
+    </PermissionGuard>
   );
 } 

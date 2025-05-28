@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
 import { exportToCSV } from '@/utils/export';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface MainCategory {
   id: number;
@@ -44,6 +45,7 @@ export default function MainCategoryPage() {
   
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'Complaint_main_category', action: 'read' }]}>
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">الفئات الأساسية للشكاوى</h1>
@@ -67,5 +69,6 @@ export default function MainCategoryPage() {
         ))}
       </div>
     </div>
+    </PermissionGuard>
   );
 } 

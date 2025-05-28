@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
 import { exportToCSV } from '@/utils/export';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface District {
   id: number;
@@ -56,6 +57,7 @@ export default function GovernoratesPage() {
   }
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'District', action: 'read' }]}>
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">المحافظات</h1>
@@ -87,5 +89,6 @@ export default function GovernoratesPage() {
         ))}
       </div>
     </div>
+    </PermissionGuard>
   );
 } 

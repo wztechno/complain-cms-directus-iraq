@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight } from 'react-icons/fa';
+import { buildStatusToUserMap, StatusToUserMap } from '@/utils/responsible-users';
 
 interface StatusSubCategory {
   id: number;
@@ -33,6 +34,7 @@ interface StatusSubCategoryWithDetails extends StatusSubCategory {
 export default function StatusSubCategoryDetailsPage({ params }: { params: { id: string } }) {
   const [subCategory, setSubCategory] = useState<StatusSubCategoryWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [responsibleUser, setResponsibleUser] = useState<string>('');
   const router = useRouter();
 
   useEffect(() => {
@@ -85,6 +87,11 @@ export default function StatusSubCategoryDetailsPage({ params }: { params: { id:
         subCategoryData.nextStatusDetails = nextStatusData.data;
       }
 
+      // Fetch responsible user
+      const responsibleUsersMap = await buildStatusToUserMap();
+      const responsibleUserName = responsibleUsersMap[params.id] || 'غير محدد';
+      setResponsibleUser(responsibleUserName);
+
       setSubCategory(subCategoryData);
       setLoading(false);
     } catch (error) {
@@ -111,49 +118,33 @@ export default function StatusSubCategoryDetailsPage({ params }: { params: { id:
 
   return (
     <div className="p-8 mr-64">
-      <div className="mb-8">
-        <button
-          onClick={() => router.back()}
-          className="flex items-center gap-2 text-[#4664AD] hover:text-[#3A5499]"
-        >
-          <FaArrowRight />
-          <span>العودة إلى القائمة</span>
-        </button>
-      </div>
-
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex justify-between items-start mb-6">
-          <div className="text-3xl font-bold">{subCategory.name}</div>
-          <div className="text-gray-500">
-            {subCategory.statusCategoryDetails?.name || 'فئة رئيسية غير محددة'}
-          </div>
+        <div className="flex items-center gap-4 mb-8">
+          <button
+            onClick={() => router.back()}
+            className="text-[#4664AD] hover:text-[#3A5499]"
+          >
+            <FaArrowRight size={24} />
+          </button>
+          <h1 className="text-3xl font-bold">{subCategory.name}</h1>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 text-right mb-1">
-              رقم التعريف
-            </label>
-            <div className="bg-gray-50 p-4 rounded-lg text-right">
-              {subCategory.id}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 text-right mb-1">
-              تاريخ الإنشاء
-            </label>
-            <div className="bg-gray-50 p-4 rounded-lg text-right">
-              {subCategory.created_at ? new Date(subCategory.created_at).toLocaleDateString('ar-EG') : 'غير محدد'}
-            </div>
-          </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 text-right mb-1">
               المحافظة
             </label>
             <div className="bg-gray-50 p-4 rounded-lg text-right">
               {subCategory.districtDetails?.name || 'غير محدد'}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 text-right mb-1">
+              المسؤول
+            </label>
+            <div className="bg-gray-50 p-4 rounded-lg text-right">
+              {responsibleUser}
             </div>
           </div>
 

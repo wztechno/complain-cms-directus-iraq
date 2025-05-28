@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { GrFilter } from 'react-icons/gr';
 import { fetchWithAuth } from '@/utils/api';
 import { exportToCSV } from '@/utils/export';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface User {
   id: number;
@@ -216,6 +217,7 @@ export default function CitizensPage() {
   }
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'Users', action: 'read' }]}>
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">المواطنين</h1>
@@ -376,5 +378,6 @@ export default function CitizensPage() {
         ))}
       </div>
     </div>
+    </PermissionGuard>
   );
 }

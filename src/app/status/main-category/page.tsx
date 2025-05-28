@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/Card';
 import { exportToCSV } from '@/utils/export';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface StatusCategory {
   id: number;
@@ -79,6 +80,7 @@ export default function StatusMainCategoryPage() {
   }
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'Status_category', action: 'read' }]}>
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">الفئة الأساسية للحالة</h1>
@@ -110,5 +112,6 @@ export default function StatusMainCategoryPage() {
         ))}
       </div>
     </div>
+    </PermissionGuard>
   );
 } 

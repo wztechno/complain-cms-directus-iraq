@@ -11,6 +11,7 @@ import {
 } from "@/utils/permissions";
 import ComplaintMedia from "@/components/ComplaintMedia";
 import ComplaintPercentageCalculator from "./ComplaintPercentageCalculator";
+import PermissionGuard from "@/components/PermissionGuard";
 
 /*************************
  * Helpers & Type Aliases *
@@ -98,15 +99,16 @@ interface ComplaintData {
   audios?: AudioFile[];
   processedFiles?: FileFile[];
   status?: 'قيد المراجعة' | 'منجزة';
-  location_id?: number | null;
-  location?: LocationData;
-}
+  location?: {
+    id: number;
+    latitude: number;
+    longitude: number;
+    city: string;
+    district: string;
+    district_id: number | null;
+  };
 
-interface LocationData {
-  id: number;
-  latitude: number;
-  longitude: number;
-  city: string;
+  [key: string]: unknown;
 }
 
 interface SelectOptions {
@@ -168,7 +170,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [complaint, setComplaint] = useState<ComplaintData | null>(null);
   const [statusOptions] = useState<SelectOptions>({
     in_review: 'قيد المراجعة',
@@ -214,25 +215,23 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
 
       /* 2️⃣ Core complaint */
       const compRes = await fetch(
-        `https://complaint.top-wp.com/items/Complaint/${params.id}?fields=*,user.*`
+        `https://complaint.top-wp.com/items/Complaint/${params.id}?fields=*,user.*,location.*`
       ).then((r) => r.json());
       if (!compRes?.data) throw new Error("Complaint not found");
 
-      if (!complaintMatchesPermissions(compRes.data, userPerms)) {
+      if (!complaintMatchesPermissions(compRes.data, userPerms as unknown as any[])) {
         setError("ليس لديك صلاحية لعرض هذه الشكوى");
         return;
       }
       const core: ComplaintData = compRes.data;
 
       /* 3️⃣ Parallel look-ups including location */
-      const [districtsRes, statusSubRes, complaintSubRes, locationRes] = await Promise.all([
+      const [districtsRes, statusSubRes, complaintSubRes] = await Promise.all([
         fetch("https://complaint.top-wp.com/items/District").then((r) => r.json()),
         fetch(
           `https://complaint.top-wp.com/items/Status_subcategory?filter[complaint_subcategory][_eq]=${core.Complaint_Subcategory}&filter[district][_eq]=${core.district}`
         ).then((r) => r.json()),
-        fetch("https://complaint.top-wp.com/items/Complaint_sub_category").then((r) => r.json()),
-        // Only fetch location if complaint has location_id
-        core.location_id ? fetch(`https://complaint.top-wp.com/items/location/${core.location_id}`).then((r) => r.json()) : Promise.resolve(null)
+        fetch("https://complaint.top-wp.com/items/Complaint_sub_category").then((r) => r.json())
       ]);
 
       /* 3-A 👉  if complaint has NO status yet, show them *all* valid ones */
@@ -279,13 +278,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         videos,
         audios,
         processedFiles: files,
-        // Add location data if available
-        location: locationRes?.data ? {
-          id: locationRes.data.id,
-          latitude: locationRes.data.latitude,
-          longitude: locationRes.data.longitude,
-          city: locationRes.data.city
-        } : undefined
+        location: core.location // Use the location directly from core data
       });
       setDistricts(Object.fromEntries(districtsRes.data.map((d: any) => [d.id, d.name])));
       setSubcategoryStatusOptions(Object.fromEntries(statusSubRes.data.map((s: any) => [s.id, s.name])));
@@ -377,10 +370,9 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         note: editForm.note,
         completion_percentage: newPercentage,
         status: editForm.status,
-        // location_id: editForm.location_id
       };
 
-      await fetchWithAuth(`/items/Complaint/${complaint.id}`, {
+      await fetch(`https://complaint.top-wp.com/items/Complaint/${complaint.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateBody),
@@ -406,9 +398,19 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         }
       }
 
+      // After successful update, update the local state
+      setComplaint(prev => prev ? {
+        ...prev,
+        status_subcategory: editForm.status_subcategory || null,
+        note: editForm.note || "",
+        completion_percentage: newPercentage,
+        status: editForm.status || prev.status
+      } : null);
+
       alert("تم تحديث حالة الشكوى بنجاح");
       setIsEditing(false);
-      // Refresh the data to trigger percentage recalculation
+      
+      // Refresh the data to ensure everything is in sync
       await fetchComplaintData();
     } catch (e) {
       console.error(e);
@@ -478,84 +480,89 @@ console.log("locations", complaint?.location);
     );
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8 mr-64">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">تفاصيل الشكوى</h1>
-        <div className="flex gap-3">
-          {!isEditing && (
+    <PermissionGuard
+      requiredPermissions={[{ resource: 'Complaint', action: 'read' }]}
+      complaintData={complaint || undefined}
+    >
+      <div className="min-h-screen bg-gray-100 p-8 mr-64">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">تفاصيل الشكوى</h1>
+          <div className="flex gap-3">
+            {!isEditing && (
+              <button
+                onClick={handleDelete}
+                disabled={updating}
+                className={`bg-red-600 text-white px-4 py-2 rounded-lg ${
+                  updating ? "opacity-70 cursor-not-allowed" : "hover:bg-red-700"
+                }`}
+              >
+                {updating ? "جاري الحذف..." : "حذف الشكوى"}
+              </button>
+            )}
             <button
-              onClick={handleDelete}
+              onClick={() => {
+                if (isEditing) return handleSave();
+                setEditForm({
+                  status_subcategory: complaint?.status_subcategory || undefined,
+                  completion_percentage: complaint?.completion_percentage ?? 0,
+                  note: complaint?.note ?? "",
+                  is_done: statusIsDone,
+                });
+                setIsEditing(true);
+              }}
               disabled={updating}
-              className={`bg-red-600 text-white px-4 py-2 rounded-lg ${
-                updating ? "opacity-70 cursor-not-allowed" : "hover:bg-red-700"
+              className={`bg-[#4664AD] text-white px-4 py-2 rounded-lg ${
+                updating ? "opacity-70 cursor-not-allowed" : "hover:bg-[#3a5499]"
               }`}
             >
-              {updating ? "جاري الحذف..." : "حذف الشكوى"}
+              {updating ? "جاري الحفظ..." : isEditing ? "حفظ تغيير الحالة" : "تغيير الحالة"}
             </button>
-          )}
-          <button
-            onClick={() => {
-              if (isEditing) return handleSave();
-              setEditForm({
-                status_subcategory: complaint?.status_subcategory || undefined,
-                completion_percentage: complaint?.completion_percentage ?? 0,
-                note: complaint?.note ?? "",
-                is_done: statusIsDone,
-              });
-              setIsEditing(true);
+          </div>
+        </div>
+
+        {/* Form / View */}
+        {isEditing ? (
+          <EditForm
+            complaint={complaint!}
+            districts={districts}
+            complaintSubcats={complaintSubcats}
+            nextStatusOpts={nextStatusOptions}
+            editForm={editForm}
+            setEditForm={setEditForm}
+            onStatusChange={async (id) => {
+              if (!id) return setNextStatusOptions({});
+              const stat = await fetchStatusSubcategory(id);
+              if (stat?.nextstatus)
+                setNextStatusOptions({ [stat.nextstatus.id]: stat.nextstatus.name });
+              setEditForm((p) => ({ ...p, is_done: stat?.done ?? false }));
             }}
-            disabled={updating}
-            className={`bg-[#4664AD] text-white px-4 py-2 rounded-lg ${
-              updating ? "opacity-70 cursor-not-allowed" : "hover:bg-[#3a5499]"
-            }`}
-          >
-            {updating ? "جاري الحفظ..." : isEditing ? "حفظ تغيير الحالة" : "تغيير الحالة"}
-          </button>
+            statusOptions={statusOptions}
+          />
+        ) : (
+          <DisplayCard
+            complaint={complaint!}
+            districts={districts}
+            complaintSubcats={complaintSubcats}
+            statusOpts={subcategoryStatusOptions}
+            statusIsDone={statusIsDone}
+            timelineId={timelineId}
+            statusOptions={statusOptions}
+          />
+        )}
+
+        {/* Media */}
+        <div className="bg-white rounded-lg p-6 shadow mt-6">
+          <h2 className="text-xl font-bold mb-4 text-right">المرفقات والوسائط</h2>
+          <ComplaintMedia
+            images={complaint?.images}
+            videos={complaint?.videos}
+            audios={complaint?.audios}
+            files={complaint?.processedFiles}
+          />
         </div>
       </div>
-
-      {/* Form / View */}
-      {isEditing ? (
-        <EditForm
-          complaint={complaint!}
-          districts={districts}
-          complaintSubcats={complaintSubcats}
-          nextStatusOpts={nextStatusOptions}
-          editForm={editForm}
-          setEditForm={setEditForm}
-          onStatusChange={async (id) => {
-            if (!id) return setNextStatusOptions({});
-            const stat = await fetchStatusSubcategory(id);
-            if (stat?.nextstatus)
-              setNextStatusOptions({ [stat.nextstatus.id]: stat.nextstatus.name });
-            setEditForm((p) => ({ ...p, is_done: stat?.done ?? false }));
-          }}
-          statusOptions={statusOptions}
-        />
-      ) : (
-        <DisplayCard
-          complaint={complaint!}
-          districts={districts}
-          complaintSubcats={complaintSubcats}
-          statusOpts={subcategoryStatusOptions}
-          statusIsDone={statusIsDone}
-          timelineId={timelineId}
-          statusOptions={statusOptions}
-        />
-      )}
-
-      {/* Media */}
-      <div className="bg-white rounded-lg p-6 shadow mt-6">
-        <h2 className="text-xl font-bold mb-4 text-right">المرفقات والوسائط</h2>
-        <ComplaintMedia
-          images={complaint?.images}
-          videos={complaint?.videos}
-          audios={complaint?.audios}
-          files={complaint?.processedFiles}
-        />
-      </div>
-    </div>
+    </PermissionGuard>
   );
 }
 
@@ -775,25 +782,20 @@ const DisplayCard: React.FC<{
         <ComplaintPercentageCalculator complaintId={complaint.id} />
 
         {/* Status done indicator */}
-        <div>
+        {/* <div>
           <label className="block text-sm font-medium text-gray-700 text-right mb-1">
             حالة الإنجاز
           </label>
-          <div className="flex items-center justify-between bg-gray-100 p-2 rounded">
-            <span>{statusIsDone ? "تم إنجاز هذه الحالة" : "لم يتم إنجاز هذه الحالة بعد"}</span>
+          <div className="relative w-full h-8 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className={`relative inline-block w-10 h-5 rounded-full ${
-                statusIsDone ? "bg-green-500" : "bg-gray-300"
-              }`}
-            >
-              <span
-                className={`absolute left-1 bottom-1 bg-white w-3 h-3 rounded-full ${
-                  statusIsDone ? "translate-x-4" : ""
-                }`}
-              />
-            </div>
+              className="h-full bg-green-500 transition-all duration-500"
+              style={{ width: `${complaint.completion_percentage}%` }}
+            />
+            <span className="absolute inset-0 flex items-center justify-center text-sm font-medium">
+              {complaint.completion_percentage}%
+            </span>
           </div>
-        </div>
+        </div> */}
 
         <Field label="ملاحظة" value={complaint.note} />
       </div>

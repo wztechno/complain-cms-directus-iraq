@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { FaStar } from 'react-icons/fa';
 import { GrFilter } from 'react-icons/gr';
 import { exportToCSV } from '@/utils/export';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface UserDetails {
   full_name?: string;
@@ -179,6 +180,7 @@ export default function RatingsPage() {
   }
 
   return (
+    <PermissionGuard requiredPermissions={[{ resource: 'Complaint_ratings', action: 'read' }]}>
     <div className="p-8 mr-64">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">تقييمات الشكاوى</h1>
@@ -331,5 +333,6 @@ export default function RatingsPage() {
         ))}
       </div>
     </div>
+    </PermissionGuard>
   );
 } 

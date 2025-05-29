@@ -123,7 +123,11 @@ const mapFileToMedia = async (
   const res = await fetchWithAuth(`/files/${fileId}`);
   if (!res?.data) return;
   const f = res.data;
-  const inferredType = explicitType ?? (f.type?.split("/")[0] as any);
+
+  // Get file extension and mime type
+  const extension = f.filename_download.toLowerCase().split('.').pop();
+  const mimeType = f.type?.toLowerCase() || '';
+
   const common = {
     id: f.id,
     filename_download: f.filename_download,
@@ -132,16 +136,48 @@ const mapFileToMedia = async (
     src: getMediaUrl(f.id, f.type),
   } as const;
 
-  switch (inferredType) {
-    case "image":
-      return { type: "image", width: f.width, height: f.height, ...common };
-    case "video":
-      return { type: "video", duration: f.duration, ...common };
-    case "audio":
-      return { type: "audio", duration: f.duration, ...common };
-    default:
-      return { type: "file", ...common };
+  // If explicit type is provided, use it
+  if (explicitType) {
+    switch (explicitType) {
+      case "image":
+        return { type: "image", width: f.width, height: f.height, ...common };
+      case "video":
+        return { type: "video", duration: f.duration, ...common };
+      case "audio":
+        return { type: "audio", duration: f.duration, ...common };
+      default:
+        return { type: "file", ...common };
+    }
   }
+
+  // Check MIME type first
+  if (mimeType.startsWith('image/')) {
+    return { type: "image", width: f.width, height: f.height, ...common };
+  }
+  if (mimeType.startsWith('video/')) {
+    return { type: "video", duration: f.duration, ...common };
+  }
+  if (mimeType.startsWith('audio/')) {
+    return { type: "audio", duration: f.duration, ...common };
+  }
+
+  // Fallback to extension check
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+  const videoExts = ['mp4', 'webm', 'ogg', 'mov'];
+  const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'aac'];
+
+  if (imageExts.includes(extension)) {
+    return { type: "image", width: f.width, height: f.height, ...common };
+  }
+  if (videoExts.includes(extension)) {
+    return { type: "video", duration: f.duration, ...common };
+  }
+  if (audioExts.includes(extension)) {
+    return { type: "audio", duration: f.duration, ...common };
+  }
+
+  // Default to file type
+  return { type: "file", ...common };
 };
 
 const unique = <T,>(arr: T[]): T[] => Array.from(new Set(arr));
@@ -250,7 +286,16 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         ...(Array.isArray(core.file) ? core.file : core.file ? [core.file] : []),
       ].filter(Boolean) as string[]);
 
-      const mediaObjects = await Promise.all(mediaIds.map((id) => mapFileToMedia(id)));
+      const mediaObjects = await Promise.all(mediaIds.map(async (id) => {
+        // Try to determine the type based on the source field
+        let explicitType: "image" | "video" | "audio" | "file" | undefined;
+        if (id === core.image) explicitType = "image";
+        if (id === core.video) explicitType = "video";
+        if (id === core.voice) explicitType = "audio";
+        
+        return mapFileToMedia(id, explicitType);
+      }));
+
       const images = mediaObjects.filter((m): m is ImageFile => m?.type === "image");
       const videos = mediaObjects.filter((m): m is VideoFile => m?.type === "video");
       const audios = mediaObjects.filter((m): m is AudioFile => m?.type === "audio");
@@ -545,7 +590,6 @@ console.log("locations", complaint?.location);
             districts={districts}
             complaintSubcats={complaintSubcats}
             statusOpts={subcategoryStatusOptions}
-            statusIsDone={statusIsDone}
             timelineId={timelineId}
             statusOptions={statusOptions}
           />
@@ -730,7 +774,6 @@ const DisplayCard: React.FC<{
   districts: SelectOptions;
   complaintSubcats: SelectOptions;
   statusOpts: SelectOptions;
-  statusIsDone: boolean;
   timelineId: number | null;
   statusOptions: SelectOptions;
 }> = ({
@@ -738,7 +781,6 @@ const DisplayCard: React.FC<{
   districts,
   complaintSubcats,
   statusOpts,
-  statusIsDone,
   timelineId,
   statusOptions,
 }) => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaImage, FaVideo, FaVolumeUp, FaFileAlt, FaEye, FaDownload, FaPlay, FaPause, FaStop, FaSpinner, FaExternalLinkAlt, FaFilePdf, FaFileWord } from 'react-icons/fa';
+import { FaImage, FaVideo, FaVolumeUp, FaFileAlt, FaEye, FaDownload, FaPlay, FaStop, FaSpinner, FaExternalLinkAlt, FaFilePdf, FaFileWord, FaTimes } from 'react-icons/fa';
 
 interface MediaFile {
   id: string;
@@ -41,14 +41,73 @@ const isViewableInBrowser = (filename: string) => {
   return extension === 'pdf' || extension === 'docx' || extension === 'doc';
 };
 
+// Modal component for media preview
+const MediaPreviewModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  title: string;
+}> = ({ isOpen, onClose, children, title }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex justify-between items-center p-4 border-b">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-full"
+          >
+            <FaTimes />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const mapFileToMedia = (file: MediaFile): MediaFile => {
+  // Check file extension
+  const extension = file.filename_download.toLowerCase().split('.').pop();
+  
+  // Image extensions
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(extension || '')) {
+    return { ...file, type: 'image' };
+  }
+  
+  // Video extensions
+  if (['mp4', 'webm', 'ogg', 'mov'].includes(extension || '')) {
+    return { ...file, type: 'video' };
+  }
+  
+  // Audio extensions
+  if (['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(extension || '')) {
+    return { ...file, type: 'audio' };
+  }
+  
+  // Default to file type
+  return { ...file, type: 'file' };
+};
+
 const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
   images = [],
   videos = [],
   audios = [],
   files = []
 }) => {
-  const [activeDocPreview, setActiveDocPreview] = useState<string | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   
+  // Process each media array to ensure correct type assignment
+  const processedImages = images.map(img => mapFileToMedia(img)).filter(file => file.type === 'image');
+  const processedVideos = videos.map(vid => mapFileToMedia(vid)).filter(file => file.type === 'video');
+  const processedAudios = audios.map(aud => mapFileToMedia(aud)).filter(file => file.type === 'audio');
+  const processedFiles = files.map(file => mapFileToMedia(file)).filter(file => file.type === 'file');
+
   // Function to format file size
   const formatFileSize = (bytes?: number): string => {
     if (!bytes) return 'غير معروف';
@@ -68,42 +127,38 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
   
-  // Function to toggle document preview
-  const toggleDocPreview = (fileId: string) => {
-    if (activeDocPreview === fileId) {
-      setActiveDocPreview(null);
-    } else {
-      setActiveDocPreview(fileId);
-    }
-  };
-
   return (
     <div className="space-y-6 mt-4">
       {/* Images Section */}
-      {images.length > 0 && (
+      {processedImages.length > 0 && (
         <div className="bg-white rounded-lg p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <FaImage className="text-[#4664AD]" />
             <h3 className="text-lg font-semibold">الصور المرفقة</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {images.map((image) => (
+            {processedImages.map((image) => (
               <div key={image.id} className="bg-gray-50 rounded-lg overflow-hidden">
                 <div className="relative group">
                   <img 
                     src={image.src} 
                     alt={image.title || image.filename_download} 
-                    className="w-full h-48 object-cover"
+                    className="w-full h-48 object-cover cursor-pointer"
+                    onClick={() => {
+                      setSelectedMedia(image);
+                      setIsPreviewOpen(true);
+                    }}
                   />
                   <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <a 
-                      href={image.src} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
+                    <button 
+                      onClick={() => {
+                        setSelectedMedia(image);
+                        setIsPreviewOpen(true);
+                      }}
                       className="p-2 bg-white rounded-full mx-2 hover:bg-blue-100"
                     >
                       <FaEye className="text-[#4664AD]" />
-                    </a>
+                    </button>
                     <a 
                       href={image.src} 
                       download={image.filename_download}
@@ -123,23 +178,45 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
       )}
 
       {/* Videos Section */}
-      {videos.length > 0 && (
+      {processedVideos.length > 0 && (
         <div className="bg-white rounded-lg p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <FaVideo className="text-[#4664AD]" />
             <h3 className="text-lg font-semibold">مقاطع الفيديو المرفقة</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {videos.map((video) => (
+            {processedVideos.map((video) => (
               <div key={video.id} className="bg-gray-50 rounded-lg overflow-hidden">
-                <video 
-                  controls 
-                  className="w-full h-auto"
-                  poster={video.src + '?preview=true'}
-                >
-                  <source src={video.src} type="video/mp4" />
-                  متصفحك لا يدعم عرض الفيديو
-                </video>
+                <div className="relative group">
+                  <video 
+                    className="w-full h-auto cursor-pointer"
+                    poster={video.src + '?preview=true'}
+                    onClick={() => {
+                      setSelectedMedia(video);
+                      setIsPreviewOpen(true);
+                    }}
+                  >
+                    <source src={video.src} type="video/mp4" />
+                  </video>
+                  <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => {
+                        setSelectedMedia(video);
+                        setIsPreviewOpen(true);
+                      }}
+                      className="p-2 bg-white rounded-full mx-2 hover:bg-blue-100"
+                    >
+                      <FaPlay className="text-[#4664AD]" />
+                    </button>
+                    <a 
+                      href={video.src} 
+                      download={video.filename_download}
+                      className="p-2 bg-white rounded-full mx-2 hover:bg-blue-100"
+                    >
+                      <FaDownload className="text-[#4664AD]" />
+                    </a>
+                  </div>
+                </div>
                 <div className="p-3 flex justify-between items-center">
                   <div className="text-sm text-gray-700 truncate">
                     {video.title || video.filename_download}
@@ -157,14 +234,14 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
       )}
 
       {/* Audio Section */}
-      {audios.length > 0 && (
+      {processedAudios.length > 0 && (
         <div className="bg-white rounded-lg p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <FaVolumeUp className="text-[#4664AD]" />
             <h3 className="text-lg font-semibold">التسجيلات الصوتية المرفقة</h3>
           </div>
           <div className="space-y-3">
-            {audios.map((audio) => (
+            {processedAudios.map((audio) => (
               <div key={audio.id} className="bg-gray-50 rounded-lg p-3">
                 <div className="flex justify-between items-center mb-2">
                   <div className="text-sm font-medium text-gray-700">
@@ -198,17 +275,16 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
         </div>
       )}
 
-      {/* Other Files Section */}
-      {files.length > 0 && (
+      {/* Files Section */}
+      {processedFiles.length > 0 && (
         <div className="bg-white rounded-lg p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <FaFileAlt className="text-[#4664AD]" />
             <h3 className="text-lg font-semibold">الملفات المرفقة</h3>
           </div>
           <div className="space-y-4">
-            {files.map((file) => {
+            {processedFiles.map((file) => {
               const isViewable = isViewableInBrowser(file.filename_download);
-              const isActive = activeDocPreview === file.id;
               
               return (
                 <div key={file.id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -222,7 +298,10 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
                       
                       {isViewable && (
                         <button
-                          onClick={() => toggleDocPreview(file.id)}
+                          onClick={() => {
+                            setSelectedMedia(file);
+                            setIsPreviewOpen(true);
+                          }}
                           className="p-1.5 bg-gray-100 hover:bg-blue-100 rounded text-gray-700 hover:text-blue-700"
                           title="عرض المستند"
                         >
@@ -240,9 +319,6 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
                       </a>
                     </div>
                   </div>
-                  
-                  {/* Document Preview Section */}
-                  {isActive && <DocumentViewer file={file} />}
                 </div>
               );
             })}
@@ -250,7 +326,44 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
         </div>
       )}
       
-      {images.length === 0 && videos.length === 0 && audios.length === 0 && files.length === 0 && (
+      {/* Preview Modal */}
+      <MediaPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setSelectedMedia(null);
+        }}
+        title={selectedMedia?.title || selectedMedia?.filename_download || ''}
+      >
+        {selectedMedia?.type === 'image' && (
+          <div className="flex items-center justify-center">
+            <img
+              src={selectedMedia.src}
+              alt={selectedMedia.title || selectedMedia.filename_download}
+              className="max-w-full max-h-[70vh] object-contain"
+            />
+          </div>
+        )}
+        {selectedMedia?.type === 'video' && (
+          <div className="flex items-center justify-center">
+            <video
+              controls
+              autoPlay
+              className="max-w-full max-h-[70vh]"
+            >
+              <source src={selectedMedia.src} type="video/mp4" />
+              متصفحك لا يدعم عرض الفيديو
+            </video>
+          </div>
+        )}
+        {selectedMedia?.type === 'file' && (
+          <div className="w-full h-[70vh]">
+            <DocumentViewer file={selectedMedia} />
+          </div>
+        )}
+      </MediaPreviewModal>
+      
+      {processedImages.length === 0 && processedVideos.length === 0 && processedAudios.length === 0 && processedFiles.length === 0 && (
         <div className="bg-white rounded-lg p-6 shadow-sm text-center">
           <p className="text-gray-500">لا توجد مرفقات لهذه الشكوى</p>
         </div>
@@ -386,9 +499,6 @@ const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({ audioSrc, audioTi
   // Update the handleOpenInNewTab function to ensure it uses a fresh token
   const handleOpenInNewTab = () => {
     try {
-      // Extract and validate token
-      const token = audioSrc.match(/access_token=([^&]+)/)?.[1] || localStorage.getItem('auth_token');
-      
       // Get fresh URL with latest token if needed
       let urlToOpen = audioSrc;
       // Add cache busting to avoid any caching issues
@@ -815,9 +925,6 @@ const M4AAudioPlayer: React.FC<M4AAudioPlayerProps> = ({ audioSrc, audioTitle })
   // Update the handleOpenInNewTab function to ensure it uses a fresh token
   const handleOpenInNewTab = () => {
     try {
-      // Extract and validate token
-      const token = audioSrc.match(/access_token=([^&]+)/)?.[1] || localStorage.getItem('auth_token');
-      
       // Get fresh URL with latest token if needed
       let urlToOpen = audioSrc;
       // Add cache busting to avoid any caching issues

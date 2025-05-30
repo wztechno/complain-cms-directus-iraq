@@ -208,8 +208,8 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
   const [error, setError] = useState<string | null>(null);
   const [complaint, setComplaint] = useState<ComplaintData | null>(null);
   const [statusOptions] = useState<SelectOptions>({
-    in_review: 'قيد المراجعة',
-    completed: 'منجزة'
+    'قيد المراجعة': 'قيد المراجعة',
+    'منجزة': 'منجزة'
   });
 
   const [districts, setDistricts] = useState<SelectOptions>({});

@@ -81,7 +81,7 @@ export default function RatingsPage() {
       //       }
 
       //       // Fetch user details
-      //       const userRes = await fetchWithAuth(`/items/Users/${rating.user}`);
+      //       const userRes = await fetchWithAuth(`/items/users/${rating.user}`);
       //       if (userRes.ok) {
       //         const userData = await userRes.json();
       //         details.userDetails = userData.data;

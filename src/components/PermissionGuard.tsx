@@ -44,12 +44,6 @@ interface ComplaintData {
     [key: string]: unknown;
 }
 
-interface UserPolicy {
-  id: string;
-  user_id: string[];
-  policy_id: string[];
-}
-
 interface Permission {
   id: string;
   role: string | null;
@@ -77,7 +71,7 @@ export default function PermissionGuard({ children, requiredPermissions, complai
   useEffect(() => {
     const checkPermissions = async () => {
       try {
-        const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+        const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
         let userId = null;
         // Check admin status first
         const storedUserInfo = localStorage.getItem('user_info');
@@ -102,43 +96,90 @@ export default function PermissionGuard({ children, requiredPermissions, complai
         }
 
         // Get user's policies
-        const userPoliciesResponse = await fetchWithAuth(`/items/user_policies?filter[user_id][_eq]=${userId}`);
+        const userPoliciesResponse = await fetchWithAuth(`/items/user_policies?filter[user_id][directus_users_id][_eq]=${userId}&fields=*,policy_id.*,user_id.*`);
         // const userPolicies: UserPolicy[] = userPoliciesResponse.data.filter((policy: UserPolicy) => 
         //   policy.user_id.includes(userId)
         // );
         const userPolicies = userPoliciesResponse.data;
-        const firstPolicyId = userPolicies[0]?.policy_id?.[0];
-        console.log("FirstpolicyID:", firstPolicyId);
-        if (!userPolicies.length) {
+        console.log("Raw user policies response:", userPoliciesResponse);
+        console.log("User policies data:", userPolicies);
+        
+        if (!userPolicies || !userPolicies.length) {
+          console.log("No user policies found");
           setHasAccess(false);
           setLoading(false);
           return;
         }
 
+        // Log the structure of the first policy for debugging
+        console.log("First user policy structure:", JSON.stringify(userPolicies[0], null, 2));
+
+        // Extract policy IDs from the response with robust handling
+        const policyIds: string[] = [];
+        for (const userPolicy of userPolicies) {
+          if (userPolicy.policy_id) {
+            // Handle the nested structure: policy_id is an array of objects with directus_policies_id
+            const policyIdData = userPolicy.policy_id;
+            let policyId;
+            
+            if (Array.isArray(policyIdData) && policyIdData.length > 0) {
+              policyId = policyIdData[0]?.directus_policies_id;
+            } else if (typeof policyIdData === 'object' && policyIdData?.directus_policies_id) {
+              policyId = policyIdData.directus_policies_id;
+            } else if (typeof policyIdData === 'string') {
+              policyId = policyIdData;
+            }
+            
+            if (policyId && !policyIds.includes(String(policyId))) {
+              policyIds.push(String(policyId));
+              console.log(`Added policy ID: ${policyId}`);
+            }
+          }
+        }
+
+        if (policyIds.length === 0) {
+          console.log("No valid policy IDs found in user policies");
+          setHasAccess(false);
+          setLoading(false);
+          return;
+        }
+
+        console.log(`Extracted policy IDs: ${policyIds.join(', ')}`);
 
         // Regular permission checks for non-admin users
         const permissionChecks = await Promise.all(
           requiredPermissions.map(async (reqPerm) => {
-            // For each policy assigned to the user
-            // for (const userPolicy of userPolicies) {
+            console.log(`Checking permission for resource: ${reqPerm.resource}, action: ${reqPerm.action}`);
+            
+            // Check permissions across all user policies
+            for (const policyId of policyIds) {
               // Get permissions for this policy and collection
               const permissionsResponse = await fetchWithAuth(
-                `/permissions?filter[policy][_eq]=${firstPolicyId}&filter[collection][_eq]=${reqPerm.resource}`
+                `/permissions?filter[policy][_eq]=${policyId}&filter[collection][_eq]=${reqPerm.resource}`
               );
-              console.log("permissionsResponse", permissionsResponse);
+              console.log(`Permissions response for policy ${policyId}, collection ${reqPerm.resource}:`, permissionsResponse);
               const permissions = permissionsResponse.data;
-              console.log(`Permissions for ${reqPerm.resource}:`, permissions);
+              
+              if (!permissions || !Array.isArray(permissions)) {
+                console.log(`No permissions array found for ${reqPerm.resource}`);
+                continue;
+              }
               
               // Check if any permission matches the required action
               const hasPermission = permissions.some((perm: Permission) => {
                 console.log(`Checking permission:`, perm);
-                return perm.action === reqPerm.action || perm.action === '*';
+                const actionMatch = perm.action === reqPerm.action || perm.action === '*';
+                console.log(`Action match for ${perm.action} vs ${reqPerm.action}: ${actionMatch}`);
+                return actionMatch;
               });
 
               if (hasPermission) {
+                console.log(`Found matching permission for ${reqPerm.resource}:${reqPerm.action}`);
                 return true;
               }
+            }
             
+            console.log(`No matching permission found for ${reqPerm.resource}:${reqPerm.action}`);
             return false;
           })
         );
@@ -153,9 +194,9 @@ export default function PermissionGuard({ children, requiredPermissions, complai
         if (hasAllPermissions && complaintData) {
           // Get all permissions for complaint collection
           const complaintPermissions = await Promise.all(
-            userPolicies.map(async (userPolicy: UserPolicy) => {
+            policyIds.map(async (policyId) => {
               const response = await fetchWithAuth(
-                `/permissions?filter[policy][_eq]=${userPolicy.policy_id}&filter[collection][_eq]=Complaint`
+                `/permissions?filter[policy][_eq]=${policyId}&filter[collection][_eq]=Complaint`
               );
               return response.data;
             })

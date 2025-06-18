@@ -5,13 +5,6 @@ import { BsFilter, BsPersonFill, BsChevronDown } from 'react-icons/bs';
 import { GrFilter } from 'react-icons/gr';
 import PermissionGuard from '@/components/PermissionGuard';
 
-interface Role {
-  id: string;
-  name: string;
-  description: string | null;
-  created_at?: string;
-}
-
 interface User {
   id: string;
   first_name: string;
@@ -44,6 +37,7 @@ interface Policy {
     };
   };
   policy_user_id?: string[]; // Add this field
+  directus_policies_id?: string;
 }
 
 interface District {
@@ -84,10 +78,20 @@ interface UserPolicy {
   policy_id: string;
 }
 
-interface CustomCondition {
+interface PermissionFilter {
+  district?: { _eq: string };
+  status_subcategory?: { _in: number[] };
+  complaint_subcategory?: { _in: number[] };
+  id?: { _eq: string };
+}
+
+interface PermissionData {
+  user?: string;
+  permissions?: {
+    _and?: PermissionFilter[];
+  };
   collection: string;
-  value: string;
-  value2?: string;
+  action: string;
 }
 
 const createEmptyCollectionPermissions = (): CollectionPermissions => {
@@ -109,7 +113,6 @@ const createEmptyCollectionPermissions = (): CollectionPermissions => {
 };
 
 export default function SettingsPage() {
-  const [roles, setRoles] = useState<Role[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [subCategories, setSubCategories] = useState<StatusSubCategory[]>([]);
@@ -149,8 +152,7 @@ export default function SettingsPage() {
 
   const fetchInitialData = async () => {
     try {
-      const [rolesData, policiesData, districtsData, subCategoriesData, usersData, userPoliciesResponse] = await Promise.all([
-        fetchWithAuth('/roles'),
+      const [policiesData, districtsData, subCategoriesData, usersData, userPoliciesResponse] = await Promise.all([
         fetchWithAuth('/policies'),
         fetchWithAuth('/items/District'),
         fetchWithAuth('/items/Status_subcategory'),
@@ -158,7 +160,6 @@ export default function SettingsPage() {
         fetchWithAuth('/items/user_policies')
       ]);
 
-      setRoles(rolesData.data);
       setPolicies(policiesData.data);
       setDistricts(districtsData.data);
       setSubCategories(subCategoriesData.data.filter((sub: StatusSubCategory) => sub.name !== null));
@@ -170,15 +171,6 @@ export default function SettingsPage() {
       console.error('Error fetching data:', error);
       setLoading(false);
     }
-  };
-
-  const handleAddUserToPolicy = () => {
-    setUserPermissions([...userPermissions, {
-      userId: '',
-      district: '',
-      status_subcategory: [],
-      complaint_subcategory: []
-    }]);
   };
 
   const handleRemoveUserPermission = (index: number) => {
@@ -193,52 +185,6 @@ export default function SettingsPage() {
     // Remove from newPolicy permissions
     const updatedPermissions2 = { ...newPolicy.permissions };
     delete updatedPermissions2[userId];
-    setNewPolicy({
-      ...newPolicy,
-      permissions: updatedPermissions2
-    });
-  };
-
-  const handleUserPermissionChange = (index: number, field: keyof UserPermission, value: any) => {
-    const updatedPermissions = [...userPermissions];
-    const previousUserId = updatedPermissions[index]?.userId;
-    
-    if (field === 'userId') {
-      setSelectedUsers(prev => {
-        const updated = prev.filter(id => id !== previousUserId);
-        return [...updated, value];
-      });
-    }
-    
-    updatedPermissions[index] = {
-      ...updatedPermissions[index],
-      [field]: value
-    };
-    
-    setUserPermissions(updatedPermissions);
-
-    // Update newPolicy permissions
-    const updatedPermissions2 = { ...newPolicy.permissions };
-    
-    if (field === 'userId') {
-      if (previousUserId) {
-        delete updatedPermissions2[previousUserId];
-      }
-      updatedPermissions2[value] = {
-        district: updatedPermissions[index].district,
-        status_subcategory: updatedPermissions[index].status_subcategory,
-        complaint_subcategory: updatedPermissions[index].complaint_subcategory
-      };
-    } else {
-      const currentUserId = updatedPermissions[index].userId;
-      if (currentUserId) {
-        updatedPermissions2[currentUserId] = {
-          ...updatedPermissions2[currentUserId],
-          [field]: value
-        };
-      }
-    }
-    
     setNewPolicy({
       ...newPolicy,
       permissions: updatedPermissions2
@@ -268,15 +214,15 @@ export default function SettingsPage() {
     const defaultCollectionPermissions = createEmptyCollectionPermissions();
 
     try {
-      const permissionsResponse = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policy.id}`);
+      const permissionsResponse = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policy.directus_policies_id}`);
       const permissionsData = permissionsResponse.data;
       
       const userPerms = permissionsData
-        .filter((perm: any) => perm.user)
-        .map((perm: any) => {
+        .filter((perm: { user?: string }) => perm.user)
+        .map((perm: { user: string; permissions?: { _and?: any[] } }) => {
           const district = perm.permissions?._and?.[0]?.district?._eq;
-          const statusSubcategories = perm.permissions?._and?.find((p: any) => p.status_subcategory)?._in || [];
-          const complaintSubcategories = perm.permissions?._and?.find((p: any) => p.complaint_subcategory)?._in || [];
+          const statusSubcategories = perm.permissions?._and?.find((p: any) => p.status_subcategory)?.status_subcategory?._in || [];
+          const complaintSubcategories = perm.permissions?._and?.find((p: any) => p.complaint_subcategory)?.complaint_subcategory?._in || [];
           
           return {
             userId: perm.user,
@@ -393,12 +339,25 @@ export default function SettingsPage() {
         for (const [action, enabled] of Object.entries(actions)) {
           if (action === 'customConditions' || !enabled) continue;
 
-          let permissionData: any = {
+          const permissionData = {
             collection,
             action,
             role: selectedRole,
             fields: ["*"],
             policy: policyId
+          } as {
+            collection: string;
+            action: string;
+            role: string;
+            fields: string[];
+            policy: string;
+            permissions?: {
+              _and: Array<{
+                id?: { _eq: number };
+                district?: { _eq: number };
+                status_subcategory?: { _eq: number };
+              }>;
+            };
           };
 
           // Handle custom conditions based on collection type
@@ -474,59 +433,70 @@ export default function SettingsPage() {
         }
       }
 
-      // ---------------------------------------------------------------
-      // HANDLE USER POLICY ASSOCIATIONS - FIRST DELETE, THEN CREATE NEW
-      // ---------------------------------------------------------------
+      // 1. First delete ALL existing user_policies for this policy
+      console.log(`Removing all existing user_policies for policy ${policyId}`);
+      const existingPolicyUserPolicies = userPolicies.filter(up => 
+        up.policy_id && (Array.isArray(up.policy_id) ? 
+          up.policy_id.includes(policyId) : 
+          up.policy_id === policyId)
+      );
+      console.log("existingPolicyUserPolicies", existingPolicyUserPolicies);
+      
+      // Delete existing user_policies in parallel
+      const deletePromises = existingPolicyUserPolicies.map(async (userPolicy) => {
+        try {
+          console.log(`Deleting user_policy: ${userPolicy.id}`);
+          await fetchWithAuth(`/items/user_policies/${userPolicy.id}`, {
+            method: 'DELETE'
+          });
+          return true;
+        } catch (error) {
+          console.error(`Error deleting user_policy ${userPolicy.id}:`, error);
+          return false;
+        }
+      });
+      // Wait for all deletions to complete
+      await Promise.all(deletePromises);
+      console.log(`Removed ${existingPolicyUserPolicies.length} existing user_policies`);
+
       // 2. Create new user_policy associations if users are selected
       if (Array.isArray(selectedUsers) && selectedUsers.length > 0) {
         console.log(`Creating ${selectedUsers.length} new user_policy associations`);
         
-        // Create data payload
-        const data = {
-          user_id: selectedUsers,
-          policy_id: [policyId]
-        };
+        // Create individual records for each user using the proper junction table format
+        const createPromises = selectedUsers.map(async (userId) => {
+          const data = {
+            user_id: {
+              create: [{ directus_users_id: userId }]
+            },
+            policy_id: {
+              create: [{ directus_policies_id: policyId }]
+            }
+          };
+          
+          console.log(`Creating user_policy for user ${userId}:`, JSON.stringify(data, null, 2));
+          
+          try {
+            const result = await fetchWithAuth('/items/user_policies', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+            });
+            console.log(`Successfully created user_policy for user ${userId}`);
+            return result;
+          } catch (error) {
+            console.error(`Error creating user_policy for user ${userId}:`, error);
+            return null;
+          }
+        });
         
-        console.log("Payload for new user_policies:", data);
-        
-        try {
-          await fetchWithAuth('/items/user_policies', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-          });
-          console.log("Successfully created new user_policy associations");
-        } catch (error) {
-          console.error("Error creating user_policy associations:", error);
-        }
+        // Wait for all creations to complete
+        const results = await Promise.all(createPromises);
+        const successCount = results.filter(r => r !== null).length;
+        console.log(`Successfully created ${successCount} out of ${selectedUsers.length} user_policy associations`);
       } else {
         console.log("No users selected, skipping user_policy creation");
       }
-
-            // 1. First delete ALL existing user_policies for this policy
-            console.log(`Removing all existing user_policies for policy ${policyId}`);
-            const existingPolicyUserPolicies = userPolicies.filter(up => 
-              up.policy_id && (Array.isArray(up.policy_id) ? 
-                up.policy_id.includes(policyId) : 
-                up.policy_id === policyId)
-            );
-            console.log("existingPolicyUserPolicies", existingPolicyUserPolicies);
-            // Delete existing user_policies in parallel
-            const deletePromises = existingPolicyUserPolicies.map(async (userPolicy) => {
-              try {
-                console.log(`Deleting user_policy: ${userPolicy.id}`);
-                await fetchWithAuth(`/items/user_policies/${userPolicy.id}`, {
-                  method: 'DELETE'
-                });
-                return true;
-              } catch (error) {
-                console.error(`Error deleting user_policy ${userPolicy.id}:`, error);
-                return false;
-              }
-            });
-            // Wait for all deletions to complete
-            await Promise.all(deletePromises);
-            console.log(`Removed ${existingPolicyUserPolicies.length} existing user_policies`);
       
       // Clear permissions cache and force refresh
       localStorage.removeItem('permissionsCache');
@@ -542,14 +512,14 @@ export default function SettingsPage() {
       // Delete any orphaned user policies (those without a user_id)
       try {
         console.log('Checking for orphaned user policies with null user_id');
-        const orphanedPolicies = updatedUserPoliciesData.filter((policy: any) => 
+        const orphanedPolicies = updatedUserPoliciesData.filter((policy: { user_id?: string[] }) => 
           !policy.user_id || policy.user_id.length === 0
         );
         
         if (orphanedPolicies.length > 0) {
           console.log(`Found ${orphanedPolicies.length} orphaned user policies, deleting them`);
           
-          const deleteOrphanPromises = orphanedPolicies.map(async (policy: any) => {
+          const deleteOrphanPromises = orphanedPolicies.map(async (policy: { id: string }) => {
             try {
               console.log(`Deleting orphaned user_policy: ${policy.id}`);
               await fetchWithAuth(`/items/user_policies/${policy.id}`, {

@@ -16,6 +16,13 @@ interface SidebarItem {
   adminOnly?: boolean;
 }
 
+interface PermissionData {
+  action: string;
+  collection: string;
+  policy: string;
+  [key: string]: unknown;
+}
+
 const Sidebar = () => {
   const pathname = usePathname();
   const [visibleItems, setVisibleItems] = useState<SidebarItem[]>([]);
@@ -40,7 +47,7 @@ const Sidebar = () => {
 
   // Check if user is admin based on stored user info
   const isAdmin = useMemo(() => {
-    const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+    const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
     const storedUserInfo = localStorage.getItem('user_info');
     if (storedUserInfo) {
       try {
@@ -90,7 +97,7 @@ const Sidebar = () => {
         
         // Step 1: Fetch user's policy ID
         const policiesResponse = await fetch(
-          `https://complaint.top-wp.com/items/user_policies?filter[user_id]=${userId}`,
+          `https://complaint.top-wp.com/items/user_policies?filter[user_id][directus_users_id][_eq]=${userId}&fields=*,policy_id.*,user_id.*`,
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -109,19 +116,25 @@ const Sidebar = () => {
           throw new Error('No policy data found for user');
         }
         
-        const policyIdArray = policiesData.data[0]?.policy_id;
+        const policyIdData = policiesData.data[0]?.policy_id;
         let policyId;
+        console.log("Policy ID data:", policyIdData);
         
-        if (Array.isArray(policyIdArray) && policyIdArray.length > 0) {
-          policyId = policyIdArray[0];
-        } else if (typeof policyIdArray === 'string') {
-          policyId = policyIdArray;
+        // Handle the nested structure: policy_id is an array of objects with directus_policies_id
+        if (Array.isArray(policyIdData) && policyIdData.length > 0) {
+          policyId = policyIdData[0]?.directus_policies_id;
+        } else if (typeof policyIdData === 'object' && policyIdData?.directus_policies_id) {
+          policyId = policyIdData.directus_policies_id;
+        } else if (typeof policyIdData === 'string') {
+          policyId = policyIdData;
         }
         
         if (!policyId) {
-          console.error("Could not extract a valid policy ID");
+          console.error("Could not extract a valid policy ID", { policyIdData });
           throw new Error('No policy found for user');
         }
+
+        console.log("Extracted policy ID:", policyId);
 
         // Step 2: Fetch permissions for this policy
         const permissionsResponse = await fetch(
@@ -148,7 +161,7 @@ const Sidebar = () => {
         
         // Create a map of collections with read permissions
         const readableCollections = new Set<string>();
-        permissionsData.data.forEach((permission: any) => {
+        permissionsData.data.forEach((permission: PermissionData) => {
           if (permission.action === 'read') {
             const collection = permission.collection;
             if (collection) {

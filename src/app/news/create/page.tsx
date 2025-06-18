@@ -30,7 +30,7 @@ export default function CreateNewsPage() {
   }, []);
 
   const checkAdminStatus = () => {
-    const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+    const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
     try {
       const storedUserInfo = localStorage.getItem('user_info');
       if (storedUserInfo) {

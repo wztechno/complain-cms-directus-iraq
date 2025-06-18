@@ -265,7 +265,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       const [districtsRes, statusSubRes, complaintSubRes] = await Promise.all([
         fetch("https://complaint.top-wp.com/items/District").then((r) => r.json()),
         fetch(
-          `https://complaint.top-wp.com/items/Status_subcategory?filter[complaint_subcategory][_eq]=${core.Complaint_Subcategory}&filter[district][_eq]=${core.district}`
+          `https://complaint.top-wp.com/items/Status_subcategory?filter[complaint_subcategory][_eq]=${core.complaint_subcategory}&filter[district][_eq]=${core.district}`
         ).then((r) => r.json()),
         fetch("https://complaint.top-wp.com/items/Complaint_sub_category").then((r) => r.json())
       ]);

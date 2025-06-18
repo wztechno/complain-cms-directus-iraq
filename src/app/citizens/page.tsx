@@ -58,7 +58,7 @@ export default function CitizensPage() {
     try {
       setLoading(true);
       const [userRes, districtRes] = await Promise.all([
-        fetch('https://complaint.top-wp.com/items/Users'),
+        fetch('https://complaint.top-wp.com/items/users'),
         fetchWithAuth('/items/District'),
       ]);
 

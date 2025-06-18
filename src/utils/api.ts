@@ -139,7 +139,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
       if (endpoint === '/items/Complaint' || endpoint.includes('?filter')) {
         try {
           console.log('Fetching user policies to determine permissions...');
-          const policyRes = await fetch(`${BASE_URL}/items/user_policies`, { headers });
+          const policyRes = await fetch(`${BASE_URL}/items/user_policies?fields=*,policy_id.*,user_id.*`, { headers });
           const policyJson = await policyRes.json();
           console.log('Raw user policies data:', policyJson);
       
@@ -177,7 +177,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
             console.log(`Fallback to API - Policy admin:`, policyAdminJson);
           }
           
-          const isAdmin = policyAdminJson.data?.role === '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+          const isAdmin = policyAdminJson.data?.role === '0FE8C81C-035D-41AC-B3B9-72A35678C558';
           
           // Find user policy that matches current user ID
           console.log('Looking for policies matching user ID:', currentUserId);
@@ -192,14 +192,14 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
             console.log('Examining policy:', policy);
             
             // Handle the case where user_id might be an array
-            const policyUserId = Array.isArray(policy.user_id) ? policy.user_id[0] : policy.user_id;
+            const policyUserId = Array.isArray(policy.user_id) ? policy.user_id[0].directus_users_id : policy.user_id.directus_users_id;
             console.log(`Policy user ID (${typeof policyUserId}):`, policyUserId);
             console.log(`Current user ID (${typeof currentUserId}):`, currentUserId);
             
             if (policyUserId === currentUserId) {
               matchingUserPolicy = policy;
               // Handle policy_id as either a string or an array
-              policyId = Array.isArray(policy.policy_id) ? policy.policy_id[0] : policy.policy_id;
+              policyId = Array.isArray(policy.policy_id) ? policy.policy_id[0].directus_policies_id : policy.policy_id.directus_policies_id;
               console.log('MATCH FOUND! Using policy:', matchingUserPolicy);
               console.log('Policy ID extracted:', policyId);
               break;
@@ -211,8 +211,8 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
             console.warn('No policy exactly matching current user. Using first available policy as fallback.');
             matchingUserPolicy = userPolicies[0];
             policyId = Array.isArray(matchingUserPolicy.policy_id) 
-              ? matchingUserPolicy.policy_id[0] 
-              : matchingUserPolicy.policy_id;
+              ? matchingUserPolicy.policy_id[0].directus_policies_id
+              : matchingUserPolicy.policy_id.directus_policies_id;
           }
 
           console.log(`Final policy being used: ${policyId || 'Admin user - no specific policy needed'}`);
@@ -379,8 +379,7 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
         ...options,
         headers,
       });
-      
-      console.log(`Permissions response status: ${response.status}`);
+      console.log(`Permissions response: ${response}`);
       
       if (!response.ok) {
         console.error(`Error fetching permissions: ${response.status} ${response.statusText}`);

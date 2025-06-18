@@ -94,7 +94,7 @@ export default function NotificationsPage() {
   }, [users]);
 
   const checkAdminStatus = () => {
-    const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+    const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
     try {
       const storedUserInfo = localStorage.getItem('user_info');
       if (storedUserInfo) {
@@ -122,7 +122,7 @@ export default function NotificationsPage() {
   const fetchUsers = async () => {
     try {
       // Modify to include district information in the response
-      const response = await fetchWithAuth('/items/Users?fields=id,full_name,email,district');
+      const response = await fetchWithAuth('/items/users?fields=id,full_name,email,district');
       
       if (response && response.data) {
         console.log(`Successfully fetched ${response.data.length} users`);
@@ -197,7 +197,7 @@ export default function NotificationsPage() {
     try {
       setFetchingDistrictUsers(true);
       // Fetch users filtered by district
-      const response = await fetchWithAuth(`/items/Users?filter[district][_eq]=${districtId}&fields=id,full_name,email,district`);
+      const response = await fetchWithAuth(`/items/users?filter[district][_eq]=${districtId}&fields=id,full_name,email,district`);
       
       if (response && response.data) {
         console.log(`Found ${response.data.length} users in district ${districtId}`);
@@ -317,7 +317,7 @@ export default function NotificationsPage() {
       }
 
       const userInfo = JSON.parse(userInfoStr);
-      const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+      const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
       const isUserAdmin = userInfo?.role === ADMIN_ROLE_ID;
       
       console.log('Current user info:', {

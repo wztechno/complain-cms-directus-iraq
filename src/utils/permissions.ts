@@ -28,7 +28,7 @@ let lastFetchTime = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Define admin role ID
-const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
 
 /**
  * Fetches current user permissions and caches them
@@ -118,7 +118,7 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
       console.log(`Fetching policies for user ID: ${userId}`);
       
       // Fetch user policies from the API
-      const userPoliciesResponse = await fetchWithAuth(`/items/user_policies?filter[user_id][_eq]=${userId}`);
+      const userPoliciesResponse = await fetchWithAuth(`/items/user_policies?filter[user_id][directus_users_id][_eq]=${userId}`);
       
       if (!userPoliciesResponse || !userPoliciesResponse.data || !userPoliciesResponse.data.length) {
         console.warn(`No user policies found for user ID ${userId}`);
@@ -133,14 +133,25 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
       // Extract policy IDs from the response
       const policyIds: string[] = [];
       for (const userPolicy of userPoliciesResponse.data) {
-        if (userPolicy.policy) {
-          const policyId = typeof userPolicy.policy === 'object' ? userPolicy.policy_id : userPolicy.policy_id;
-          if (policyId && !policyIds.includes(policyId)) {
+        if (userPolicy.policy_id) {
+          // Handle the nested structure: policy_id is an array of objects with directus_policies_id
+          const policyIdData = userPolicy.policy_id;
+          let policyId;
+          
+          if (Array.isArray(policyIdData) && policyIdData.length > 0) {
+            policyId = policyIdData[0]?.directus_policies_id;
+          } else if (typeof policyIdData === 'object' && policyIdData?.directus_policies_id) {
+            policyId = policyIdData.directus_policies_id;
+          } else if (typeof policyIdData === 'string') {
+            policyId = policyIdData;
+          }
+          
+          if (policyId && !policyIds.includes(String(policyId))) {
             policyIds.push(String(policyId));
+            console.log(`Added policy ID: ${policyId}`);
           }
         }
       }
-      
       if (policyIds.length === 0) {
         console.warn('No valid policy IDs found in user policies');
         userPermissionsCache = permissionsData;

@@ -113,7 +113,7 @@ export default function ComplaintsPage() {
       /* 1️⃣ user perms + isAdmin */
       const perms = await getUserPermissions();
       const info = JSON.parse(localStorage.getItem('user_info') || '{}');
-      const ADMIN_ROLE = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+      const ADMIN_ROLE = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
       const admin = info?.role === ADMIN_ROLE;
       setIsAdmin(admin);
 
@@ -127,9 +127,9 @@ export default function ComplaintsPage() {
       const districtMapTyped = new Map<number, string>();
       districtsData.forEach((d: District) => districtMapTyped.set(d.id, d.name));
 
-      const locationResp = await fetch('https://complaint.top-wp.com/items/location');
-      const locationRespJson = await locationResp.json();
-      const locationData = locationRespJson?.data ?? [];
+      const locationResp = await fetchWithAuth('https://complaint.top-wp.com/items/location');
+      // const locationRespJson = await locationResp.json();
+      const locationData = locationResp?.data ?? [];
       // id → { latitude, longitude }
       const locationMap = new Map<number, { latitude: number; longitude: number }>();
       locationData.forEach((loc: any) =>
@@ -219,9 +219,9 @@ export default function ComplaintsPage() {
     }
 
     // status subcategory meta (once)
-    const subRes = await fetch(
+    const subRes = await fetchWithAuth(
       'https://complaint.top-wp.com/items/Status_subcategory?fields=*,status_category.*'
-    ).then((r) => r.json());
+    );
 
     return sortByDate(
       data.map((c: any) => {
@@ -566,7 +566,7 @@ const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect }) => (
           title={c.title || 'بدون عنوان'}
           status={c.status || 'غير محدد'}
           mainCategory={c.mainCategory || 'غير محدد'}
-          type={c.Service_type || 'غير محدد'}
+          type={c.service_type || 'غير محدد'}
           location={c.districtName || 'غير محدد'}
           progress={Number(c.completion_percentage) || 0}
           issue={c.description || 'لا يوجد وصف'}

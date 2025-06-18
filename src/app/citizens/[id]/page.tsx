@@ -43,7 +43,7 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
   }, [params.id]);
 
   const checkAdminStatus = () => {
-    const ADMIN_ROLE_ID = '8A8C7803-08E5-4430-9C56-B2F20986FA56';
+    const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
     try {
       const storedUserInfo = localStorage.getItem('user_info');
       if (storedUserInfo) {
@@ -60,7 +60,7 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
   const fetchUserDetails = async () => {
     try {
       // Fetch user details
-      const res = await fetch(`https://complaint.top-wp.com/items/Users/${params.id}`);
+      const res = await fetch(`https://complaint.top-wp.com/items/users/${params.id}`);
       if (!res.ok) {
         throw new Error('Failed to fetch user details');
       }

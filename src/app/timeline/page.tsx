@@ -86,7 +86,8 @@ export default function TimelinePage() {
           complaint_name: complaint?.title || '—',
           user_name: userName,
           status_name: statusMap[entry.status_subcategory] || '—',
-          responsible_user: responsibleUser
+          responsible_user: responsibleUser,
+          statusDate: entry.date_created || entry.date
         };
       });
     

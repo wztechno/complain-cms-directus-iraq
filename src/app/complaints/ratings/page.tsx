@@ -18,10 +18,10 @@ interface ComplaintDetails {
 
 interface Rating {
   id: string;
-  Complaint: {
+  complaint: {
     id: string;
     title?: string;
-    Service_type?: string;
+    service_type?: string;
   };
   user: {
     full_name?: string;
@@ -34,8 +34,12 @@ interface Rating {
 
 interface RatingWithDetails extends Rating {
   complaintDetails?: ComplaintDetails;
-  userDetails?: UserDetails;
+  user: {
+    full_name?: string;
+    email?: string;
+  };
 }
+
 
 export default function RatingsPage() {
   const [ratings, setRatings] = useState<RatingWithDetails[]>([]);
@@ -61,7 +65,7 @@ export default function RatingsPage() {
 
   const fetchRatings = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint_ratings?fields=*,Complaint.*');
+      const res = await fetch('https://complaint.top-wp.com/items/Complaint_ratings?fields=*,complaint.*,user.*');
       if (!res.ok) {
         throw new Error('Failed to fetch ratings');
       }
@@ -115,21 +119,21 @@ export default function RatingsPage() {
 
     if (filters.complaintId) {
       filtered = filtered.filter(rating => 
-        rating.Complaint?.id.toString().includes(filters.complaintId)
+        rating.complaint?.id.toString().includes(filters.complaintId)
       );
       console.log(`After complaint ID filter (${filters.complaintId}): ${filtered.length} ratings`);
     }
 
     if (filters.serviceType) {
       filtered = filtered.filter(rating => 
-        rating.Complaint?.Service_type === filters.serviceType
+        rating.complaint?.service_type === filters.serviceType
       );
       console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
     }
 
     if (filters.mainCategory) {
       filtered = filtered.filter(rating => 
-        rating.Complaint?.title === filters.mainCategory
+        rating.complaint?.title === filters.mainCategory
       );
     }
 
@@ -265,7 +269,7 @@ export default function RatingsPage() {
                 className="w-full border border-gray-300 rounded-md p-2 text-right"
               >
                 <option value="">الكل</option>
-                {Array.from(new Set(ratings.map(r => r.Complaint?.title)))
+                {Array.from(new Set(ratings.map(r => r.complaint?.title)))
                   .filter(Boolean)
                   .map(type => (
                     <option key={type} value={type}>{type}</option>
@@ -306,16 +310,16 @@ export default function RatingsPage() {
           <div key={item.id} className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-6">
               <div className="hover:text-gray-600">
-                <span className="text-lg">{item.Complaint?.id}</span>
+                <span className="text-lg">{item.complaint?.id}</span>
               </div>
               <h3 className="text-lg font-semibold">
-                {getUserName(item.user)}
+                {getUserName({ full_name: item.user.full_name })}
               </h3>
             </div>
 
             <div className="mb-6 flex justify-between">
               <div className="text-xl font-semibold mb-3 text-right">
-                {item.Complaint?.title || 'شكوى رقم ' + item?.Complaint?.id}
+                {item.complaint?.title || 'شكوى رقم ' + item?.complaint?.id}
               </div>
               <div className="flex justify-end gap-1">
                 {renderStars(parseInt(item.rating_value))}

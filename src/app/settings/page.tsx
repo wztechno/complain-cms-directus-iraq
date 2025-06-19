@@ -119,6 +119,7 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [userPolicies, setUserPolicies] = useState<UserPolicy[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showAddPolicy, setShowAddPolicy] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [userPermissions, setUserPermissions] = useState<UserPermission[]>([]);
@@ -310,6 +311,7 @@ export default function SettingsPage() {
   };
 
   const handleSavePolicy = async () => {
+    setSaving(true);
     try {
       // 1. Create or update policy
       const policyResponse = await fetchWithAuth(
@@ -571,6 +573,8 @@ export default function SettingsPage() {
       console.error('Error saving policy:', error);
       // TODO: Add error toast or UI feedback
       // showToast("Failed to save policy", { type: "error" });
+    } finally {
+      setSaving(false);
     }
   };
   
@@ -1048,14 +1052,26 @@ export default function SettingsPage() {
                   <button
                     onClick={() => setShowAddPolicy(false)}
                     className="text-gray-600 hover:text-gray-800"
+                    disabled={saving}
                   >
                     إلغاء
                   </button>
                   <button
                     onClick={handleSavePolicy}
-                    className="bg-[#4664AD] text-white px-6 py-2 rounded-lg hover:bg-[#3A5499]"
+                    disabled={saving}
+                    className={`px-6 py-2 rounded-lg ${
+                      saving 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-[#4664AD] hover:bg-[#3A5499]'
+                    } text-white flex items-center gap-2`}
                   >
-                    حفظ
+                    {saving && (
+                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
+                    {saving ? 'جاري الحفظ...' : 'حفظ'}
                   </button>
                 </div>
               </div>

@@ -95,7 +95,7 @@ export default function CitizensPage() {
               const [complaintsRes, ratingsRes, notificationsRes] = await Promise.all([
                 fetch(`https://complaint.top-wp.com/items/Complaint?filter[user][_eq]=${user.id}`),
                 fetch(`https://complaint.top-wp.com/items/Complaint_ratings?filter[user][_eq]=${user.id}`),
-                fetchWithAuth(`/items/notification?filter[users][Users_id][_eq]=${user.id}`)
+                fetchWithAuth(`/items/notification?filter[users][users_id][_eq]=${user.id}`)
               ]);
 
               // Process the responses

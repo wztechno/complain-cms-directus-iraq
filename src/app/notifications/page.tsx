@@ -235,8 +235,8 @@ export default function NotificationsPage() {
     
     const searchTerm = userSearchTerm.toLowerCase();
     const filtered = users.filter(user => 
-      user.full_name.toLowerCase().includes(searchTerm) || 
-      (user.email && user.email.toLowerCase().includes(searchTerm))
+      user?.full_name?.toLowerCase().includes(searchTerm) || 
+      (user?.email && user?.email?.toLowerCase().includes(searchTerm))
     );
     
     setFilteredUsers(filtered);
@@ -414,7 +414,7 @@ export default function NotificationsPage() {
       if (userIds.length > 0) {
         // Include users for both specific selection and send to all
         notificationData.users = {
-          create: userIds.map(id => ({ Users_id: id })),
+          create: userIds.map(id => ({ users_id: id })),
           delete: []
         };
       } else {

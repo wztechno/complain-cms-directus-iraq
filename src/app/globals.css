@@ -2,23 +2,110 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root , ::after, ::before, ::backdrop {
   --foreground-rgb: 0, 0, 0;
   --background-rgb: 243, 244, 246;
+  --native-dark-bg: white !important;
+  --native-dark-visited-link-color: none !important;
+  --native-dark-link-color: none !important;
+}
+:root, ::after, ::before, ::backdrop {
+  --native-dark-bg: white !important;
 }
 
+html a:visited, html a:visited > *:not(svg) {
+    color: none !important;
+}
+.a[ping]:link, a[ping]:link > *:not(svg), :link:not(cite) {
+  color: none !important;
+}
+
+/* html a:visited, html a:visited > *:not(svg) {
+    color: black !important;
+} */
+
+.right-0 a::-moz-selection span::first-line {
+  color: black !important;
+}
+/* Force light mode - disable all dark mode styles */
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-rgb: 26, 32, 44;
+    --foreground-rgb: 0, 0, 0;
+    --background-rgb: 243, 244, 246;
+    --native-dark-bg: white !important;
   }
 }
 
 body {
-  color: black;
-  background: rgb(var(--background-rgb));
+  color: black !important;
+  background: white !important;
   direction: rtl;
   font-family: __Cairo_0aa52e, __Cairo_Fallback_0aa52e;
+}
+
+/* Ensure sidebar styling is not affected by any dark mode */
+.w-64.bg-\[#4664AD\] {
+  background-color: #4664AD !important;
+  color: white !important;
+  border-right: none !important;
+}
+
+/* Ensure active sidebar items maintain proper styling */
+.bg-white.text-\[#4664AD\] {
+  background-color: white !important;
+  color: #4664AD !important;
+}
+
+/* Sidebar borders and separators */
+.border-b-4.border-white {
+  border-bottom: 4px solid white !important;
+}
+
+.border-t.border-white {
+  border-top: 1px solid white !important;
+}
+
+/* Hover states for sidebar */
+.hover\:bg-\[#4B69A8\]:hover {
+  background-color: #4B69A8 !important;
+}
+
+/* Override any potential dark mode interference */
+html[native-dark-active] .w-64.bg-\[#4664AD\],
+html[data-theme="dark"] .w-64.bg-\[#4664AD\],
+html.dark .w-64.bg-\[#4664AD\] {
+  background-color: #4664AD !important;
+  color: white !important;
+}
+
+html[native-dark-active] .bg-white.text-\[#4664AD\],
+html[data-theme="dark"] .bg-white.text-\[#4664AD\],
+html.dark .bg-white.text-\[#4664AD\] {
+  background-color: white !important;
+  color: #4664AD !important;
+}
+
+html[native-dark-active] .border-b-4.border-white,
+html[data-theme="dark"] .border-b-4.border-white,
+html.dark .border-b-4.border-white {
+  border-bottom: 4px solid white !important;
+}
+
+html[native-dark-active] .border-t.border-white,
+html[data-theme="dark"] .border-t.border-white,
+html.dark .border-t.border-white {
+  border-top: 1px solid white !important;
+}
+
+/* Force main content area to remain light */
+.min-h-screen.bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+html[native-dark-active] .min-h-screen.bg-gray-100,
+html[data-theme="dark"] .min-h-screen.bg-gray-100,
+html.dark .min-h-screen.bg-gray-100 {
+  background-color: #f3f4f6 !important;
 }
 
 .rtl {

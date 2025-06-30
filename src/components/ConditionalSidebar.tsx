@@ -11,21 +11,23 @@ export default function ConditionalSidebar({ children }: { children: React.React
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
 
-  const isLoginPage = pathname === '/login';
+  // Define public routes that don't require authentication or sidebar
+  const publicRoutes = ['/login', '/reset-password', '/test-routing'];
+  const isPublicRoute = publicRoutes.includes(pathname);
 
   useEffect(() => {
     if (!authLoading) {
-      // If user is not authenticated and not on login page, redirect to login
-      if (!isAuthenticated && !isLoginPage) {
+      // If user is not authenticated and not on a public route, redirect to login
+      if (!isAuthenticated && !isPublicRoute) {
         router.push('/login');
       } else {
         setLoading(false);
       }
     }
-  }, [isAuthenticated, authLoading, isLoginPage, router]);
+  }, [isAuthenticated, authLoading, isPublicRoute, router]);
 
-  // Don't show sidebar on login page
-  if (isLoginPage) {
+  // Don't show sidebar on public routes
+  if (isPublicRoute) {
     return <>{children}</>;
   }
 

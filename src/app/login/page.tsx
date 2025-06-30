@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,7 +18,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-    } catch (error) {
+    } catch {
       setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     } finally {
       setLoading(false);
@@ -51,7 +52,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded-md p-2 text-right"
+              className="w-full border border-gray-300 rounded-md p-2 text-right focus:ring-2 focus:ring-[#4664AD] focus:border-transparent"
               placeholder="أدخل البريد الإلكتروني"
             />
           </div>
@@ -65,23 +66,32 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded-md p-2 text-right"
+              className="w-full border border-gray-300 rounded-md p-2 text-right focus:ring-2 focus:ring-[#4664AD] focus:border-transparent"
               placeholder="أدخل كلمة المرور"
             />
             <div className="flex items-center justify-between mt-2">
-                <div className="flex items-center gap-2 justify-between">
-                    <input type="checkbox" className="form-checkbox h-4 w-4 text-blue-600" />
-                    <label className="block text-sm font-medium text-gray-700 text-right">
-                    تذكر كلمة المرور
-                    </label>
-                </div>
-                {/* <p className="text-sm text-[#2861FF]">هل نسيت كلمة المرور؟</p> */}
+              <Link 
+                href="/reset-password" 
+                className="text-sm text-[#4664AD] hover:text-[#3A5499] transition-colors"
+                onClick={() => {
+                  console.log('🔗 Forgot password link clicked - navigating to /reset-password');
+                }}
+              >
+                هل نسيت كلمة المرور؟
+              </Link>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" className="form-checkbox h-4 w-4 text-blue-600" />
+                <label className="block text-sm font-medium text-gray-700 text-right">
+                  تذكر كلمة المرور
+                </label>
+              </div>
+            </div>
           </div>
-          </div>
+
           <button
             type="submit"
             disabled={loading}
-            className={`w-full bg-[#4664AD] text-white py-2 rounded-md font-semibold ${
+            className={`w-full bg-[#4664AD] text-white py-2 rounded-md font-semibold transition-colors ${
               loading ? 'opacity-70 cursor-not-allowed' : 'hover:bg-[#3A5499]'
             }`}
           >

@@ -15,7 +15,7 @@
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
+  color: black;
   background: rgb(var(--background-rgb));
   direction: rtl;
   font-family: __Cairo_0aa52e, __Cairo_Fallback_0aa52e;

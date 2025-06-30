@@ -11,18 +11,22 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const router = useRouter();
   const pathname = usePathname();
 
+  // Define public routes that don't require authentication
+  const publicRoutes = ['/login', '/reset-password', '/test-routing'];
+  const isPublicRoute = publicRoutes.includes(pathname);
+
   // Handle authentication redirect
   useEffect(() => {
-    if (!loading && !isAuthenticated && pathname !== '/login') {
+    if (!loading && !isAuthenticated && !isPublicRoute) {
       router.push('/login');
     }
-  }, [isAuthenticated, loading, router, pathname]);
+  }, [isAuthenticated, loading, router, pathname, isPublicRoute]);
 
   // Fetch user information when authenticated
   useEffect(() => {
     const getUserInfo = async () => {
-      // Only fetch user info if authenticated and not on login page
-      if (isAuthenticated && pathname !== '/login') {
+      // Only fetch user info if authenticated and not on public routes
+      if (isAuthenticated && !isPublicRoute) {
         setLoadingUserInfo(true);
         try {
           await fetchCurrentUser();
@@ -38,7 +42,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     if (!loading && isAuthenticated) {
       getUserInfo();
     }
-  }, [isAuthenticated, loading, pathname]);
+  }, [isAuthenticated, loading, pathname, isPublicRoute]);
 
   if (loading || loadingUserInfo) {
     return (
@@ -48,7 +52,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!isAuthenticated && pathname !== '/login') {
+  if (!isAuthenticated && !isPublicRoute) {
     return null;
   }
 

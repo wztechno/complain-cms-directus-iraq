@@ -452,6 +452,17 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         status: editForm.status || prev.status
       } : null);
 
+      // Update next status options based on the newly saved status
+      if (editForm.status_subcategory) {
+        const statusData = await fetchStatusSubcategory(editForm.status_subcategory);
+        setStatusIsDone(!!statusData?.done);
+        if (statusData?.nextstatus) {
+          setNextStatusOptions({ [statusData.nextstatus.id]: statusData.nextstatus.name });
+        } else {
+          setNextStatusOptions({});
+        }
+      }
+
       alert("تم تحديث حالة الشكوى بنجاح");
       setIsEditing(false);
       
@@ -575,13 +586,6 @@ console.log("locations", complaint?.location);
             nextStatusOpts={nextStatusOptions}
             editForm={editForm}
             setEditForm={setEditForm}
-            onStatusChange={async (id) => {
-              if (!id) return setNextStatusOptions({});
-              const stat = await fetchStatusSubcategory(id);
-              if (stat?.nextstatus)
-                setNextStatusOptions({ [stat.nextstatus.id]: stat.nextstatus.name });
-              setEditForm((p) => ({ ...p, is_done: stat?.done ?? false }));
-            }}
             statusOptions={statusOptions}
           />
         ) : (
@@ -623,7 +627,6 @@ const EditForm: React.FC<{
   setEditForm: React.Dispatch<
     React.SetStateAction<Partial<ComplaintData & { is_done?: boolean }>>
   >;
-  onStatusChange: (id: number) => void;
   statusOptions: SelectOptions;
 }> = ({
   complaint,
@@ -632,9 +635,22 @@ const EditForm: React.FC<{
   nextStatusOpts,
   editForm,
   setEditForm,
-  onStatusChange,
   statusOptions,
 }) => {
+  const fetchStatusData = async (statusId: number) => {
+    try {
+      const res = await fetch(
+        `https://complaint.top-wp.com/items/Status_subcategory/${statusId}?fields=*,nextstatus.*`
+      ).then((r) => r.json());
+      return res?.data as
+        | undefined
+        | { id: number; name: string; done?: boolean; nextstatus?: any };
+    } catch (error) {
+      console.error("Error fetching status data:", error);
+      return undefined;
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg p-6 shadow space-y-6 mb-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-right">
@@ -683,10 +699,17 @@ const EditForm: React.FC<{
           </label>
           <select
             value={editForm.status_subcategory ?? ""}
-            onChange={(e) => {
+            onChange={async (e) => {
               const newVal = e.target.value ? Number(e.target.value) : undefined;
-              if (newVal) onStatusChange(newVal);
               setEditForm((p) => ({ ...p, status_subcategory: newVal }));
+              
+              // Fetch current done status for the selected status subcategory
+              if (newVal) {
+                const statusData = await fetchStatusData(newVal);
+                setEditForm((p) => ({ ...p, is_done: statusData?.done ?? false }));
+              } else {
+                setEditForm((p) => ({ ...p, is_done: false }));
+              }
             }}
             className="w-full border border-gray-300 p-2 rounded text-right"
           >

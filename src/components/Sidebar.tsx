@@ -40,7 +40,7 @@ const Sidebar = () => {
     { title: 'الفئة الأساسية للمعالجة', href: '/status/main-category', icon: <IoMdGitNetwork size={20} />, collection: 'Status_category' },
     { title: 'الفئة الفرعية للمعالجة', href: '/status/sub-category', icon: <FaTags size={20} />, collection: 'Status_subcategory' },
     { title: 'المواطنون', href: '/citizens', icon: <FaUsers size={20} />, collection: 'Users' },
-    { title: 'الموظفين', href: '/employees', icon: <FaUserTie size={20} />, collection: 'directus_users', adminOnly: true },
+    { title: 'الموظفين', href: '/employees', icon: <FaUserTie size={20} />, collection: 'directus_users'},
     { title: 'الإشعارات', href: '/notifications', icon: <FaBell size={20} />, collection: 'notification', adminOnly: true },
     { title: 'الأخبار', href: '/news', icon: <FaNewspaper size={20} />, collection: 'news', adminOnly: true },
     { title: 'الإعدادات', href: '/settings', icon: <FaCog size={20} />, collection: 'settings' },

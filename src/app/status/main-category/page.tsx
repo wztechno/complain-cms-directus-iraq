@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Card from '@/components/Card';
 import { exportToCSV } from '@/utils/export';
 import PermissionGuard from '@/components/PermissionGuard';
+import { fetchWithAuth } from '@/utils/api';
 
 interface StatusCategory {
   id: number;
@@ -25,19 +26,19 @@ export default function StatusMainCategoryPage() {
   const fetchCategories = async () => {
     try {
       // Fetch status categories
-      const res = await fetch('https://complaint.top-wp.com/items/Status_category');
-      if (!res.ok) {
-        throw new Error('Failed to fetch status categories');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth('/items/Status_category');
+      // if (!res.ok) {
+      //   throw new Error('Failed to fetch status categories');
+      // }
+      const data = await res;
       const categoriesData = data.data;
 
       // Fetch all subcategories to count them for each category
-      const subCategoriesRes = await fetch('https://complaint.top-wp.com/items/Status_subcategory');
-      if (!subCategoriesRes.ok) {
-        throw new Error('Failed to fetch subcategories');
-      }
-      const subCategoriesData = await subCategoriesRes.json();
+      const subCategoriesRes = await fetchWithAuth('/items/Status_subcategory');
+      // if (!subCategoriesRes.ok) {
+      //   throw new Error('Failed to fetch subcategories');
+      // }
+      const subCategoriesData = await subCategoriesRes;
       const allSubCategories = subCategoriesData.data;
 
       // Add subcategories count to each category

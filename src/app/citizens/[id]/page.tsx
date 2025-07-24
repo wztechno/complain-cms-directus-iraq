@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight, FaUserCircle, FaBell } from 'react-icons/fa';
+import { fetchWithAuth } from '@/utils/api';
+
 
 interface User {
   id: number;
@@ -60,18 +62,18 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
   const fetchUserDetails = async () => {
     try {
       // Fetch user details
-      const res = await fetch(`https://complaint.top-wp.com/items/users/${params.id}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch user details');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth(`/items/users/${params.id}`);
+      // if (!res.ok) {
+      //   throw new Error('Failed to fetch user details');
+      // }
+      const data = await res;
       const userData: UserWithComplaints = data.data;
 
       // Fetch user's complaints
       try {
-        const complaintsRes = await fetch(`https://complaint.top-wp.com/items/Complaint?filter[user][_eq]=${params.id}`);
-        if (complaintsRes.ok) {
-          const complaintsData = await complaintsRes.json();
+        const complaintsRes = await fetchWithAuth(`/items/Complaint?filter[user][_eq]=${params.id}`);
+        if (complaintsRes) {
+          const complaintsData = await complaintsRes;
           userData.complaints = complaintsData.data;
         }
       } catch (error) {
@@ -81,9 +83,9 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
       // Fetch district name
       if (userData.district) {
         try {
-          const districtRes = await fetch(`https://complaint.top-wp.com/items/District/${userData.district}`);
-          if (districtRes.ok) {
-            const districtData = await districtRes.json();
+          const districtRes = await fetchWithAuth(`/items/District/${userData.district}`);
+          if (districtRes) {
+            const districtData = await districtRes;
             setDistrictName(districtData.data.name);
           }
         } catch (error) {

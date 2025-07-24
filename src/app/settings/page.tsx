@@ -212,11 +212,11 @@ export default function SettingsPage() {
     const userIds = policyUserPolicies.flatMap(up => up.user_id);
     
     setSelectedUsers(userIds);
-    
+    console.log("policy", policy);
     const defaultCollectionPermissions = createEmptyCollectionPermissions();
 
     try {
-      const permissionsResponse = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policy.directus_policies_id}`);
+      const permissionsResponse = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policy.id}`);
       const permissionsData = permissionsResponse.data;
       
       const userPerms = permissionsData

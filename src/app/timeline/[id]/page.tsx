@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FaCheck } from 'react-icons/fa';
+import { fetchWithAuth } from '@/utils/api';
+import PermissionGuard from '@/components/PermissionGuard';
 
 interface TimelineEntry {
   id: number;
@@ -45,24 +47,24 @@ export default function ComplaintTimelinePage({ params }: { params: { id: string
   const fetchTimelineData = async () => {
     try {
       // 1. First fetch the specific timeline entry to get the complaint_id
-      const timelineEntryRes = await fetch(`https://complaint.top-wp.com/items/ComplaintTimeline/${params.id}`);
-      const timelineEntryJson = await timelineEntryRes.json();
+      const timelineEntryRes = await fetchWithAuth(`/items/ComplaintTimeline/${params.id}`);
+      const timelineEntryJson = await timelineEntryRes;
       const complaintId = timelineEntryJson.data.complaint_id;
       setComplaintId(complaintId);
 
       // 2. Fetch all status categories
-      const categoriesRes = await fetch('https://complaint.top-wp.com/items/Status_category');
-      const categoriesJson = await categoriesRes.json();
+      const categoriesRes = await fetchWithAuth('/items/Status_category');
+      const categoriesJson = await categoriesRes;
       const categories: StatusCategory[] = categoriesJson.data;
 
       // 3. Fetch all timeline entries for this complaint
-      const timelineRes = await fetch(`https://complaint.top-wp.com/items/ComplaintTimeline?filter[complaint_id][_eq]=${complaintId}`);
-      const timelineJson = await timelineRes.json();
+      const timelineRes = await fetchWithAuth(`/items/ComplaintTimeline?filter[complaint_id][_eq]=${complaintId}`);
+      const timelineJson = await timelineRes;
       const complaintTimelines: TimelineEntry[] = timelineJson.data;
 
       // 4. Fetch all status subcategories
-      const subCategoriesRes = await fetch('https://complaint.top-wp.com/items/Status_subcategory');
-      const subCategoriesJson = await subCategoriesRes.json();
+      const subCategoriesRes = await fetchWithAuth('/items/Status_subcategory');
+      const subCategoriesJson = await subCategoriesRes;
       const allSubCategories: StatusSubCategory[] = subCategoriesJson.data.filter(
         (sub: StatusSubCategory) => sub.name !== null
       );

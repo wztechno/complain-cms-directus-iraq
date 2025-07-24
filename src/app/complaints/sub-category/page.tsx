@@ -5,6 +5,7 @@ import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
 import { exportToCSV } from '@/utils/export';
 import PermissionGuard from '@/components/PermissionGuard';
+import { fetchWithAuth } from '@/utils/api';
 
 interface SubCategory {
   id: number;
@@ -33,11 +34,11 @@ export default function SubCategoryPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint_sub_category');
-      if (!res.ok) {
-        throw new Error('Failed to fetch categories');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth('/items/Complaint_sub_category');
+          // if (!res.ok) {
+          //   throw new Error('Failed to fetch categories');
+          // }
+      const data = await res;
       
       // Fetch main category details for each sub-category
       const categoriesWithDetails = await Promise.all(
@@ -46,11 +47,13 @@ export default function SubCategoryPage() {
           
           if (category.main_category) {
             try {
-              const mainCategoryRes = await fetch(`https://complaint.top-wp.com/items/Complaint_main_category/${category.main_category}`);
-              if (mainCategoryRes.ok) {
-                const mainCategoryData = await mainCategoryRes.json();
-                details.mainCategoryDetails = mainCategoryData.data;
-              }
+              const mainCategoryRes = await fetchWithAuth(`/items/Complaint_main_category/${category.main_category}`);
+              // if (mainCategoryRes.ok) {
+              //   const mainCategoryData = await mainCategoryRes;
+              //   details.mainCategoryDetails = mainCategoryData.data;
+              // }
+              const mainCategoryData = await mainCategoryRes;
+              details.mainCategoryDetails = mainCategoryData.data;
             } catch (error) {
               console.error('Error fetching main category details:', error);
             }

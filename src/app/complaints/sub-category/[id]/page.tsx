@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import ComplaintCard from '@/components/ComplaintCard';
-
+import { fetchWithAuth } from '@/utils/api';
 interface SubCategory {
   id: number;
   name: string;
@@ -69,21 +69,23 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
   const fetchCategoryDetails = async () => {
     try {
       // Fetch sub-category details
-      const res = await fetch(`https://complaint.top-wp.com/items/Complaint_sub_category/${params.id}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch sub-category details');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth(`/items/Complaint_sub_category/${params.id}`);
+      // if (!res.ok) {
+      //   throw new Error('Failed to fetch sub-category details');
+      // }
+      const data = await res;
       const subCategory: SubCategoryWithDetails = data.data;
 
       // If there's a main category, fetch its details
       if (subCategory.main_category) {
         try {
-          const mainCategoryRes = await fetch(`https://complaint.top-wp.com/items/Complaint_main_category/${subCategory.main_category}`);
-          if (mainCategoryRes.ok) {
-            const mainCategoryData = await mainCategoryRes.json();
-            subCategory.mainCategoryDetails = mainCategoryData.data;
-          }
+          const mainCategoryRes = await fetchWithAuth(`/items/Complaint_main_category/${subCategory.main_category}`);
+          // if (mainCategoryRes.ok) {
+          //   const mainCategoryData = await mainCategoryRes.json();
+          //   subCategory.mainCategoryDetails = mainCategoryData.data;
+          // }
+          const mainCategoryData = await mainCategoryRes;
+          subCategory.mainCategoryDetails = mainCategoryData.data;
         } catch (error) {
           console.error('Error fetching main category details:', error);
         }

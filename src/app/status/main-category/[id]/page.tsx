@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight } from 'react-icons/fa';
-
+import { fetchWithAuth } from '@/utils/api';
 interface StatusCategory {
   id: number;
   name: string;
@@ -32,22 +32,22 @@ export default function StatusCategoryDetailsPage({ params }: { params: { id: st
   const fetchCategoryDetails = async () => {
     try {
       // Fetch status category details
-      const res = await fetch(`https://complaint.top-wp.com/items/Status_category/${params.id}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch status category details');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth(`/items/Status_category/${params.id}`);
+      // if (!res.ok) {
+      //   throw new Error('Failed to fetch status category details');
+      // }
+      const data = await res;
       const categoryData: StatusCategoryWithDetails = data.data;
 
       // Fetch subcategories for this status category
       try {
-        const subCategoriesRes = await fetch(`https://complaint.top-wp.com/items/Status_subcategory?filter[status_category][_eq]=${params.id}`);
-        if (subCategoriesRes.ok) {
-          const subCategoriesData = await subCategoriesRes.json();
+        const subCategoriesRes = await fetchWithAuth(`/items/Status_subcategory?filter[status_category][_eq]=${params.id}`);
+        // if (subCategoriesRes.ok) {
+          const subCategoriesData = await subCategoriesRes;
           categoryData.subCategories = subCategoriesData.data.filter(
             (subCategory: StatusSubCategory) => subCategory.name !== null
           );
-        }
+        // }
       } catch (error) {
         console.error('Error fetching subcategories:', error);
       }

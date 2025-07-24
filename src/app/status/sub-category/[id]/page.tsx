@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight } from 'react-icons/fa';
-import { buildStatusToUserMap, StatusToUserMap } from '@/utils/responsible-users';
-
+import { buildStatusToUserMap } from '@/utils/responsible-users';
+import { fetchWithAuth } from '@/utils/api';
 interface StatusSubCategory {
   id: number;
   name: string;
@@ -44,46 +44,46 @@ export default function StatusSubCategoryDetailsPage({ params }: { params: { id:
   const fetchSubCategoryDetails = async () => {
     try {
       // Fetch subcategory details
-      const res = await fetch(`https://complaint.top-wp.com/items/Status_subcategory/${params.id}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch subcategory details');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth(`/items/Status_subcategory/${params.id}`);
+      // if (!res.ok) {
+      //   throw new Error('Failed to fetch subcategory details');
+      // }
+      const data = await res;
       const subCategoryData: StatusSubCategoryWithDetails = data.data;
 
       // Fetch related data in parallel
       const [categoryRes, districtRes, nextStatusRes] = await Promise.all([
         // Fetch main category details
         subCategoryData.status_category ? 
-          fetch(`https://complaint.top-wp.com/items/Status_category/${subCategoryData.status_category}`) : 
+          fetchWithAuth(`/items/Status_category/${subCategoryData.status_category}`) : 
           Promise.resolve(null),
         
         // Fetch district details
         subCategoryData.district ? 
-          fetch(`https://complaint.top-wp.com/items/District/${subCategoryData.district}`) : 
+          fetchWithAuth(`/items/District/${subCategoryData.district}`) : 
           Promise.resolve(null),
         
         // Fetch next status details
         subCategoryData.nextstatus ? 
-          fetch(`https://complaint.top-wp.com/items/Status_subcategory/${subCategoryData.nextstatus}`) : 
+          fetchWithAuth(`/items/Status_subcategory/${subCategoryData.nextstatus}`) : 
           Promise.resolve(null)
       ]);
 
       // Process category details
       if (categoryRes) {
-        const categoryData = await categoryRes.json();
+        const categoryData = await categoryRes;
         subCategoryData.statusCategoryDetails = categoryData.data;
       }
 
       // Process district details
       if (districtRes) {
-        const districtData = await districtRes.json();
+        const districtData = await districtRes;
         subCategoryData.districtDetails = districtData.data;
       }
 
       // Process next status details
       if (nextStatusRes) {
-        const nextStatusData = await nextStatusRes.json();
+        const nextStatusData = await nextStatusRes;
         subCategoryData.nextStatusDetails = nextStatusData.data;
       }
 

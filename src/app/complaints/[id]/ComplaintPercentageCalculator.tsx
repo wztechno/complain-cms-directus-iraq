@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { fetchWithAuth } from "@/utils/api";
 import { useState, useEffect, useCallback } from "react";
 // import { fetchWithAuth } from "@/utils/api";
 // import { getUserPermissions, hasPermission } from "@/utils/permissions";
@@ -56,35 +57,35 @@ const ComplaintPercentageCalculator = ({
     setLoading(true);
     try {
       /* ————————— 1. complaint meta (district + subcat) */
-      const compRes = await fetch(
-        `https://complaint.top-wp.com/items/Complaint/${complaintId}`
-      ).then((r) => r.json());
-      if (!compRes?.data) throw new Error("تعذر جلب بيانات الشكوى");
+      const compRes = await fetchWithAuth(
+        `/items/Complaint/${complaintId}`
+      );
+      if (!compRes) throw new Error("تعذر جلب بيانات الشكوى");
       const comp = compRes.data as any;
       const districtId: number = comp.district;
       const subCatId: number | undefined = comp.Complaint_Subcategory ?? comp.complaint_subcategory;
 
       /* ————————— 2. taxonomy look-ups */
       const [catRes, timelineRes, subRes] = await Promise.all([
-        fetch("https://complaint.top-wp.com/items/Status_category?sort=id").then((r) => r.json()),
+        fetchWithAuth("/items/Status_category?sort=id"),
         fetch(
           `https://complaint.top-wp.com/items/ComplaintTimeline?filter[complaint_id][_eq]=${complaintId}`
         ).then((r) => r.json()),
-        fetch(
-          `https://complaint.top-wp.com/items/Status_subcategory?filter[district][_eq]=${districtId}${
+        fetchWithAuth(
+          `/items/Status_subcategory?filter[district][_eq]=${districtId}${
             subCatId ? `&filter[complaint_subcategory][_eq]=${subCatId}` : ""
           }&fields=*,status_category.*&t=${Date.now()}`
-        ).then((r) => r.json()),
+        ),
       ]);
 
-      const categories: Category[] = catRes.data ?? [];
-      const timeline: TimelineEntry[] = timelineRes.data ?? [];
-      const allSubs: StatusSub[] = subRes.data ?? [];
+      const categories: Category[] = catRes?.data ?? [];
+      const timeline: TimelineEntry[] = timelineRes?.data ?? [];
+      const allSubs: StatusSub[] = subRes?.data ?? [];
 
       /* ————————— 3. done-set from timeline IDs */
       const doneIds = new Set<string>();
       timeline.forEach((t) => {
-        const id = typeof t.status_subcategory === "object" ? t.status_subcategory.id : t.status_subcategory;
+        const id = typeof t?.status_subcategory === "object" ? t?.status_subcategory?.id : t?.status_subcategory;
         if (id != null) doneIds.add(String(id));
       });
       const hasTimeline = doneIds.size > 0;
@@ -92,7 +93,7 @@ const ComplaintPercentageCalculator = ({
       /* ————————— 4. group subcategories by category */
       const byCat: Record<number, StatusSub[]> = {};
       allSubs.forEach((s) => {
-        const catId = typeof s.status_category === "object" ? s.status_category.id : s.status_category;
+        const catId = typeof s?.status_category === "object" ? s?.status_category?.id : s?.status_category;
         if (!byCat[catId]) byCat[catId] = [];
         byCat[catId].push(s);
       });
@@ -104,8 +105,8 @@ const ComplaintPercentageCalculator = ({
           subs
             .sort((a, b) => a.id - b.id)
             .forEach((s, idx, arr) => {
-              const laterDoneIdx = arr.findIndex((l) => doneIds.has(String(l.id)) && l.id > s.id);
-              if (laterDoneIdx >= 0) doneIds.add(String(s.id));
+              const laterDoneIdx = arr.findIndex((l) => doneIds.has(String(l?.id)) && l?.id > s?.id);
+              if (laterDoneIdx >= 0) doneIds.add(String(s?.id));
             });
         });
         // propagate back to earlier categories if later ones have progress
@@ -114,9 +115,9 @@ const ComplaintPercentageCalculator = ({
         for (let i = catsSorted.length - 1; i >= 0; i--) {
           const cId = catsSorted[i].id;
           const subs = byCat[cId] ?? [];
-          const catHasDone = subs.some((s) => doneIds.has(String(s.id)));
+          const catHasDone = subs.some((s) => doneIds.has(String(s?.id)));
           if (catHasDone) laterDone = true;
-          else if (laterDone) subs.forEach((s) => doneIds.add(String(s.id)));
+          else if (laterDone) subs.forEach((s) => doneIds.add(String(s?.id)));
         }
       }
 
@@ -125,7 +126,7 @@ const ComplaintPercentageCalculator = ({
         totalDone = 0;
       const catDetails = categories.map((cat) => {
         const subs = byCat[cat.id] ?? [];
-        const doneCount = subs.filter((s) => doneIds.has(String(s.id))).length;
+        const doneCount = subs.filter((s) => doneIds.has(String(s?.id))).length;
         totalSteps += subs.length;
         totalDone += doneCount;
         return {
@@ -142,7 +143,7 @@ const ComplaintPercentageCalculator = ({
       try {
         // const perms = await getUserPermissions();
         // if (hasPermission(perms, "Complaint", "update")) {
-          await fetch(`https://complaint.top-wp.com/items/Complaint/${complaintId}`, {
+          await fetchWithAuth(`/items/Complaint/${complaintId}`, {
             method: "PATCH",
             body: JSON.stringify({ completion_percentage: overallPct }),
           });

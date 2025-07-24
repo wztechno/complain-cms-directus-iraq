@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import ComplaintCard from '@/components/ComplaintCard';
-
+import { fetchWithAuth } from '@/utils/api';
 interface MainCategory {
   id: number;
   name: string;
@@ -44,11 +44,11 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
 
   const fetchCategoryDetails = async () => {
     try {
-      const res = await fetch(`https://complaint.top-wp.com/items/Complaint_main_category/${params.id}`);
-      if (!res.ok) {
-        throw new Error('Failed to fetch category details');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth(`/items/Complaint_main_category/${params.id}`);
+      // if (!res.ok) {
+      //   throw new Error('Failed to fetch category details');
+      // }
+      const data = await res;
       setCategory(data.data);
       setLoading(false);
     } catch (error) {
@@ -79,7 +79,7 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
       }
       
       // Use direct fetch with the simplest URL format
-      const directUrl = `https://complaint.top-wp.com/items/Complaint?filter[title][_eq]=${encodeURIComponent(category.name)}`;
+      const directUrl = `/items/Complaint?filter[title][_eq]=${encodeURIComponent(category.name)}`;
       console.log('Direct API request URL:', directUrl);
       
       const response = await fetch(directUrl, {
@@ -109,7 +109,7 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
       const complaintsData: Complaint[] = data.data;
       
       // Fetch districts to get district names using direct fetch for consistency
-      const districtsResponse = await fetch('https://complaint.top-wp.com/items/District', {
+      const districtsResponse = await fetchWithAuth('/items/District', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

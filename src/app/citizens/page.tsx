@@ -58,15 +58,15 @@ export default function CitizensPage() {
     try {
       setLoading(true);
       const [userRes, districtRes] = await Promise.all([
-        fetch('https://complaint.top-wp.com/items/users'),
+        fetchWithAuth('/items/users'),
         fetchWithAuth('/items/District'),
       ]);
 
-      if (!userRes.ok || !districtRes?.data) {
-        throw new Error('Failed to fetch users or districts');
-      }
+      // if (!userRes.ok || !districtRes?.data) {
+      //   throw new Error('Failed to fetch users or districts');
+      // }
 
-      const userData = await userRes.json();
+      const userData = await userRes;
       const filteredData = userData.data.filter(
         (user: User) => user.full_name !== null && user.email !== null
       );
@@ -93,14 +93,14 @@ export default function CitizensPage() {
             try {
               // Fetch user statistics in parallel
               const [complaintsRes, ratingsRes, notificationsRes] = await Promise.all([
-                fetch(`https://complaint.top-wp.com/items/Complaint?filter[user][_eq]=${user.id}`),
-                fetch(`https://complaint.top-wp.com/items/Complaint_ratings?filter[user][_eq]=${user.id}`),
+                fetchWithAuth(`/items/Complaint?filter[user][_eq]=${user.id}`),
+                fetchWithAuth(`/items/Complaint_ratings?filter[user][_eq]=${user.id}`),
                 fetchWithAuth(`/items/notification?filter[users][users_id][_eq]=${user.id}`)
               ]);
 
               // Process the responses
-              const complaintsData = await complaintsRes.json();
-              const ratingsData = await ratingsRes.json();
+              const complaintsData = await complaintsRes;
+              const ratingsData = await ratingsRes;
               const notificationsData = await notificationsRes;
 
               if (notificationsData.data?.length > 0) {

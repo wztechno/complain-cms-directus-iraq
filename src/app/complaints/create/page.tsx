@@ -65,27 +65,28 @@ export default function CreateComplaintPage() {
           fetchWithAuth('/items/Complaint_sub_category'),
         ]);
 
-        if (distRes?.data) {
+        if (distRes) {
           setDistricts(distRes?.data);
         }
 
-        if (govRes?.data) {
+        // if (govRes) {
           // No need to store all governorates for filtering
           // setAllGovernorates(govRes?.data);
-        }
+        // }
 
-        if (complaintRes?.data) {
+        if (complaintRes) {
           const uniqueServices = [...new Set(
-            complaintRes.data.map((item: { Service_type?: string }) => item.Service_type).filter(Boolean)
+            complaintRes.data.map((item: { service_type?: string }) => item.service_type).filter(Boolean)
           )] as string[];
+          console.log("uniqueServices", complaintRes);
           setServiceTypes(uniqueServices);
         }
 
-        if (statusRes?.data) {
+        if (statusRes) {
           setStatusSubcategories(statusRes.data);
         }
 
-        if (complaintSubRes?.data) {
+        if (complaintSubRes) {
           setComplaintSubcategories(complaintSubRes.data);
         }
 

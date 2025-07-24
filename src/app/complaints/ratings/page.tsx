@@ -5,7 +5,7 @@ import { FaStar } from 'react-icons/fa';
 import { GrFilter } from 'react-icons/gr';
 import { exportToCSV } from '@/utils/export';
 import PermissionGuard from '@/components/PermissionGuard';
-
+import { fetchWithAuth } from '@/utils/api';
 interface UserDetails {
   full_name?: string;
   email?: string;
@@ -65,11 +65,11 @@ export default function RatingsPage() {
 
   const fetchRatings = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint_ratings?fields=*,complaint.*,user.*');
-      if (!res.ok) {
-        throw new Error('Failed to fetch ratings');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth('/items/Complaint_ratings?fields=*,complaint.*,user.*');
+      //if (!res.ok) {
+      //   throw new Error('Failed to fetch ratings');
+      // }
+      const data = await res;
       console.log("data", data);
       // Fetch both complaint and user details for each rating
       // const ratingsWithDetails = await Promise.all(
@@ -313,7 +313,7 @@ export default function RatingsPage() {
                 <span className="text-lg">{item.complaint?.id}</span>
               </div>
               <h3 className="text-lg font-semibold">
-                {getUserName({ full_name: item.user.full_name })}
+                {getUserName({ full_name: item?.user?.full_name })}
               </h3>
             </div>
 

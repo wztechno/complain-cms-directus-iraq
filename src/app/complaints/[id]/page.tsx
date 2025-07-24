@@ -84,7 +84,7 @@ interface ComplaintData {
   governorate_name: string;
   street_name_or_number: string;
   status_subcategory: number | null;
-  Complaint_Subcategory: number | null;
+  complaint_subcategory: number | null;
   district: number | null;
   completion_percentage: number;
   note?: string;
@@ -229,12 +229,26 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
    * Data-loading helpers *
    ***********************/
   const fetchStatusSubcategory = useCallback(async (id: number) => {
-    const res = await fetch(
-      `https://complaint.top-wp.com/items/Status_subcategory/${id}?fields=*,nextstatus.*`
-    ).then((r) => r.json());
-    return res?.data as
-      | undefined
-      | { id: number; name: string; done?: boolean; nextstatus?: any };
+    try {
+      if (!id) {
+        console.warn("fetchStatusSubcategory called with invalid id:", id);
+        return null;
+      }
+      
+      const response = await fetchWithAuth(
+        `/items/Status_subcategory/${id}?fields=*,nextstatus.*`
+      );
+      
+      if (!response || !response.data) {
+        console.warn("fetchStatusSubcategory returned null data for id:", id);
+        return null;
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching status subcategory:", error);
+      return null; // Return null instead of throwing to prevent cascading errors
+    }
   }, []);
 
   const fetchComplaintData = useCallback(async () => {
@@ -250,24 +264,25 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       }
 
       /* 2️⃣ Core complaint */
-      const compRes = await fetch(
-        `https://complaint.top-wp.com/items/Complaint/${params.id}?fields=*,user.*,location.*`
-      ).then((r) => r.json());
-      if (!compRes?.data) throw new Error("Complaint not found");
+      const compRes = await fetchWithAuth(
+        `/items/Complaint/${params.id}?fields=*,user.*,location.*`
+      );
+      if (!compRes) throw new Error("Complaint not found");
 
       if (!complaintMatchesPermissions(compRes.data, userPerms as unknown as any[])) {
         setError("ليس لديك صلاحية لعرض هذه الشكوى");
         return;
       }
       const core: ComplaintData = compRes.data;
+      console.log("core", core);
 
       /* 3️⃣ Parallel look-ups including location */
       const [districtsRes, statusSubRes, complaintSubRes] = await Promise.all([
-        fetch("https://complaint.top-wp.com/items/District").then((r) => r.json()),
-        fetch(
-          `https://complaint.top-wp.com/items/Status_subcategory?filter[complaint_subcategory][_eq]=${core.complaint_subcategory}&filter[district][_eq]=${core.district}`
-        ).then((r) => r.json()),
-        fetch("https://complaint.top-wp.com/items/Complaint_sub_category").then((r) => r.json())
+        fetchWithAuth("/items/District"),
+        fetchWithAuth(
+          `/items/Status_subcategory?filter[complaint_subcategory][_eq]=${core.complaint_subcategory}&filter[district][_eq]=${core.district}`
+        ),
+        fetchWithAuth("/items/Complaint_sub_category")
       ]);
 
       /* 3-A 👉  if complaint has NO status yet, show them *all* valid ones */
@@ -275,6 +290,17 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         setNextStatusOptions(
           Object.fromEntries(statusSubRes.data.map((s: any) => [s.id, s.name]))
         );
+      }
+
+      // Also fetch the current status subcategory if it exists to ensure we have its name
+      let currentStatusSubcategory = null;
+      if (core.status_subcategory) {
+        try {
+          const currentStatusRes = await fetchWithAuth(`/items/Status_subcategory/${core.status_subcategory}`);
+          currentStatusSubcategory = currentStatusRes.data;
+        } catch (error) {
+          console.error("Error fetching current status subcategory:", error);
+        }
       }
 
       /* 4️⃣ Media */
@@ -306,14 +332,15 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       if (core.status_subcategory) {
         const statusData = await fetchStatusSubcategory(core.status_subcategory);
         doneFlag = !!statusData?.done;
-        if (statusData?.nextstatus)
+        if (statusData?.nextstatus?.id && statusData?.nextstatus?.name) {
           setNextStatusOptions({ [statusData.nextstatus.id]: statusData.nextstatus.name });
+        }
       }
 
       /* 6️⃣ Timeline id */
-      const tlRes = await fetch(
-        `https://complaint.top-wp.com/items/ComplaintTimeline?fields=id&filter[complaint_id][_eq]=${params.id}`
-      ).then((r) => r.json());
+      const tlRes = await fetchWithAuth(
+        `/items/ComplaintTimeline?fields=id&filter[complaint_id][_eq]=${params.id}`
+      );
       const tlId = tlRes?.data?.[0]?.id ?? null;
 
       /* 7️⃣ Commit state */
@@ -326,7 +353,14 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         location: core.location // Use the location directly from core data
       });
       setDistricts(Object.fromEntries(districtsRes.data.map((d: any) => [d.id, d.name])));
-      setSubcategoryStatusOptions(Object.fromEntries(statusSubRes.data.map((s: any) => [s.id, s.name])));
+      
+      // Build subcategory status options, ensuring current status is included
+      const statusOptions = Object.fromEntries(statusSubRes.data.map((s: any) => [s.id, s.name]));
+      if (currentStatusSubcategory && !statusOptions[currentStatusSubcategory.id]) {
+        statusOptions[currentStatusSubcategory.id] = currentStatusSubcategory.name;
+      }
+      setSubcategoryStatusOptions(statusOptions);
+      
       if (complaintSubRes?.data) {
         setComplaintSubcats(Object.fromEntries(complaintSubRes.data.map((s: any) => [s.id, s.name])));
       }
@@ -349,40 +383,83 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
    ************************/
 
   const handleSave = async () => {
-    if (!complaint) return;
+    if (!complaint) {
+      alert("بيانات الشكوى غير متوفرة");
+      return;
+    }
+    
+    if (!complaint.id) {
+      alert("معرف الشكوى غير صحيح");
+      return;
+    }
+    
+    // Basic validation
+    if (!editForm.status_subcategory && !editForm.note && !editForm.status) {
+      alert("يرجى إجراء تغيير واحد على الأقل قبل الحفظ");
+      return;
+    }
+
     setUpdating(true);
     try {
+      console.log("Starting handleSave with complaint:", complaint.id);
+      console.log("Edit form data:", editForm);
+
       // Calculate the new percentage first
-      const compRes = await fetch(
-        `https://complaint.top-wp.com/items/Complaint/${complaint.id}`
-      ).then((r) => r.json());
-      if (!compRes?.data) throw new Error("Could not fetch complaint data");
+      console.log("Fetching complaint data for percentage calculation...");
+      const compRes = await fetchWithAuth(
+        `/items/Complaint/${complaint.id}`
+      );
+      if (!compRes || !compRes.data) throw new Error("Could not fetch complaint data");
       
       const districtId = compRes.data.district;
       const subCatId = compRes.data.Complaint_Subcategory ?? compRes.data.complaint_subcategory;
 
+      console.log("District ID:", districtId, "SubCategory ID:", subCatId);
+
       // Fetch all the data needed for percentage calculation
+      console.log("Fetching related data for percentage calculation...");
       const [catRes, timelineRes, subRes] = await Promise.all([
-        fetch("https://complaint.top-wp.com/items/Status_category?sort=id").then((r) => r.json()),
-        fetch(
-          `https://complaint.top-wp.com/items/ComplaintTimeline?filter[complaint_id][_eq]=${complaint.id}`
-        ).then((r) => r.json()),
-        fetch(
-          `https://complaint.top-wp.com/items/Status_subcategory?filter[district][_eq]=${districtId}${
+        fetchWithAuth("/items/Status_category?sort=id"),
+        fetchWithAuth(
+          `/items/ComplaintTimeline?filter[complaint_id][_eq]=${complaint.id}`
+        ),
+        fetchWithAuth(
+          `/items/Status_subcategory?filter[district][_eq]=${districtId}${
             subCatId ? `&filter[complaint_subcategory][_eq]=${subCatId}` : ""
-          }&fields=*,status_category.*`
-        ).then((r) => r.json()),
+          }`
+        )
       ]);
 
-      const categories = catRes.data ?? [];
-      const timeline = timelineRes.data ?? [];
-      const allSubs = subRes.data ?? [];
+      // Add null safety checks for API responses
+      if (!catRes || !catRes.data) {
+        console.warn("Status categories data is null or empty");
+      }
+      if (!timelineRes || !timelineRes.data) {
+        console.warn("Timeline data is null or empty");
+      }
+      if (!subRes || !subRes.data) {
+        console.warn("Status subcategories data is null or empty");
+      }
+
+      const categories = catRes?.data ?? [];
+      const timeline = timelineRes?.data ?? [];
+      const allSubs = subRes?.data ?? [];
+
+      console.log("Fetched data:", { 
+        categoriesCount: categories.length, 
+        timelineCount: timeline.length, 
+        allSubsCount: allSubs.length 
+      });
 
       // Calculate done steps
       const doneIds = new Set<string>();
       timeline.forEach((t: any) => {
-        const id = typeof t.status_subcategory === "object" ? t.status_subcategory.id : t.status_subcategory;
-        if (id != null) doneIds.add(String(id));
+        if (t && t.status_subcategory) {
+          const id = typeof t.status_subcategory === "object" && t.status_subcategory?.id 
+            ? t.status_subcategory.id 
+            : t.status_subcategory;
+          if (id != null) doneIds.add(String(id));
+        }
       });
       // Add the new status we're saving
       if (editForm.status_subcategory) {
@@ -392,52 +469,81 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       // Group by category
       const byCat: Record<number, any[]> = {};
       allSubs.forEach((s: any) => {
-        const catId = typeof s.status_category === "object" ? s.status_category.id : s.status_category;
-        if (!byCat[catId]) byCat[catId] = [];
-        byCat[catId].push(s);
+        if (s && s.status_category) {
+          const catId = typeof s.status_category === "object" && s.status_category?.id
+            ? s.status_category.id 
+            : s.status_category;
+          if (catId != null) {
+            if (!byCat[catId]) byCat[catId] = [];
+            byCat[catId].push(s);
+          }
+        }
       });
 
       // Calculate total steps and done steps
       let totalSteps = 0;
       let totalDone = 0;
       categories.forEach((cat: any) => {
-        const subs = byCat[cat.id] ?? [];
-        const doneCount = subs.filter((s) => doneIds.has(String(s.id))).length;
-        totalSteps += subs.length;
-        totalDone += doneCount;
+        if (cat && cat.id != null) {
+          const subs = byCat[cat.id] ?? [];
+          const doneCount = subs.filter((s) => s && s.id != null && doneIds.has(String(s.id))).length;
+          totalSteps += subs.length;
+          totalDone += doneCount;
+        }
       });
 
       const newPercentage = totalSteps ? Math.round((totalDone / totalSteps) * 100) : 0;
 
-      // Update everything in one request
+      console.log("Calculated percentage:", newPercentage);
+
+      // Prepare update body with only the fields that have values
       const updateBody: any = {
-        status_subcategory: editForm.status_subcategory,
-        note: editForm.note,
         completion_percentage: newPercentage,
-        status: editForm.status,
       };
 
-      await fetch(`https://complaint.top-wp.com/items/Complaint/${complaint.id}`, {
+      if (editForm.status_subcategory !== undefined) {
+        updateBody.status_subcategory = editForm.status_subcategory;
+      }
+      
+      if (editForm.note !== undefined) {
+        updateBody.note = editForm.note;
+      }
+      
+      if (editForm.status !== undefined) {
+        updateBody.status = editForm.status;
+      }
+
+      console.log("Update body:", updateBody);
+
+      console.log("Sending PATCH request to update complaint...");
+      const updateResponse = await fetchWithAuth(`/items/Complaint/${complaint.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(updateBody),
       });
+
+      console.log("Update response:", updateResponse);
 
       // Only try to update the status_subcategory done field if we have admin permissions
       if (editForm.status_subcategory && editForm.is_done !== undefined) {
         try {
+          console.log("Attempting to update status subcategory done field");
           const perms = await getUserPermissions();
           if (hasPermission(perms, "Status_subcategory", "update")) {
-            await fetch(`https://complaint.top-wp.com/items/Status_subcategory/${editForm.status_subcategory}`, {
+            await fetchWithAuth(`/items/Status_subcategory/${editForm.status_subcategory}`, {
               method: "PATCH",
               headers: {
-                Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-                "Content-Type": "application/json"
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({ done: editForm.is_done }),
             });
+            console.log("Successfully updated status subcategory done field");
+          } else {
+            console.log("No permission to update status subcategory");
           }
-        } catch (e) {
+        } catch (e: any) {
           // Silently handle permission errors - the main status update still worked
           console.warn("Unable to update status_subcategory done field:", e);
         }
@@ -446,19 +552,24 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       // After successful update, update the local state
       setComplaint(prev => prev ? {
         ...prev,
-        status_subcategory: editForm.status_subcategory || null,
-        note: editForm.note || "",
+        status_subcategory: editForm.status_subcategory !== undefined ? editForm.status_subcategory : prev.status_subcategory,
+        note: editForm.note !== undefined ? editForm.note : prev.note,
         completion_percentage: newPercentage,
-        status: editForm.status || prev.status
+        status: editForm.status !== undefined ? editForm.status : prev.status
       } : null);
 
       // Update next status options based on the newly saved status
       if (editForm.status_subcategory) {
-        const statusData = await fetchStatusSubcategory(editForm.status_subcategory);
-        setStatusIsDone(!!statusData?.done);
-        if (statusData?.nextstatus) {
-          setNextStatusOptions({ [statusData.nextstatus.id]: statusData.nextstatus.name });
-        } else {
+        try {
+          const statusData = await fetchStatusSubcategory(editForm.status_subcategory);
+          setStatusIsDone(!!statusData?.done);
+          if (statusData?.nextstatus?.id && statusData?.nextstatus?.name) {
+            setNextStatusOptions({ [statusData.nextstatus.id]: statusData.nextstatus.name });
+          } else {
+            setNextStatusOptions({});
+          }
+        } catch (statusError) {
+          console.warn("Error fetching status subcategory data:", statusError);
           setNextStatusOptions({});
         }
       }
@@ -467,10 +578,31 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       setIsEditing(false);
       
       // Refresh the data to ensure everything is in sync
+      console.log("Refreshing complaint data...");
       await fetchComplaintData();
-    } catch (e) {
-      console.error(e);
-      alert("حدث خطأ أثناء تحديث حالة الشكوى");
+    } catch (e: any) {
+      console.error("Error in handleSave:", e);
+      console.error("Error details:", {
+        message: e.message,
+        status: e.status,
+        stack: e.stack,
+        response: e.response
+      });
+      
+      let errorMessage = 'خطأ غير محدد';
+      if (e.status === 401) {
+        errorMessage = 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مرة أخرى';
+      } else if (e.status === 403) {
+        errorMessage = 'ليس لديك صلاحية لتحديث هذه الشكوى';
+      } else if (e.status === 404) {
+        errorMessage = 'الشكوى غير موجودة';
+      } else if (e.status === 422) {
+        errorMessage = 'البيانات المرسلة غير صحيحة';
+      } else if (e.message) {
+        errorMessage = e.message;
+      }
+      
+      alert(`حدث خطأ أثناء تحديث حالة الشكوى: ${errorMessage}`);
     } finally {
       setUpdating(false);
     }
@@ -487,14 +619,9 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
 
     setUpdating(true);
     try {
-      const res = await fetch(`https://complaint.top-wp.com/items/Complaint/${complaint.id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("auth_token")}`,
-          "Content-Type": "application/json",
-        },
+      await fetchWithAuth(`/items/Complaint/${complaint.id}`, {
+        method: "DELETE"
       });
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
       alert("تم حذف الشكوى بنجاح");
       router.push("/complaints");
@@ -639,10 +766,21 @@ const EditForm: React.FC<{
 }) => {
   const fetchStatusData = async (statusId: number) => {
     try {
-      const res = await fetch(
-        `https://complaint.top-wp.com/items/Status_subcategory/${statusId}?fields=*,nextstatus.*`
-      ).then((r) => r.json());
-      return res?.data as
+      if (!statusId) {
+        console.warn("fetchStatusData called with invalid statusId:", statusId);
+        return undefined;
+      }
+      
+      const res = await fetchWithAuth(
+        `/items/Status_subcategory/${statusId}?fields=*,nextstatus.*`
+      );
+      
+      if (!res || !res.data) {
+        console.warn("fetchStatusData returned null data for statusId:", statusId);
+        return undefined;
+      }
+      
+      return res.data as
         | undefined
         | { id: number; name: string; done?: boolean; nextstatus?: any };
     } catch (error) {
@@ -662,7 +800,7 @@ const EditForm: React.FC<{
         <Field label="رقم أو اسم الشارع" value={complaint.street_name_or_number} />
         <Field
           label="الفئة الفرعية للشكوى"
-          value={complaintSubcats[complaint.Complaint_Subcategory || 0]}
+          value={complaintSubcats[String(complaint.Complaint_Subcategory || complaint.complaint_subcategory || 0)] || "—"}
         />
 
         {/* Status dropdown */}
@@ -822,7 +960,7 @@ const DisplayCard: React.FC<{
         <Field label="القضاء" value={complaint.governorate_name} />
         <Field
           label="الفئة الفرعية للشكوى"
-          value={complaintSubcats[complaint.Complaint_Subcategory || 0]}
+          value={complaintSubcats[complaint.complaint_subcategory || 0]}
         />
         <Field
           label="الفئة الفرعية للحالة"

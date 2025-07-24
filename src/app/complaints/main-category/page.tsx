@@ -5,7 +5,7 @@ import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
 import { exportToCSV } from '@/utils/export';
 import PermissionGuard from '@/components/PermissionGuard';
-
+import { fetchWithAuth } from '@/utils/api';
 interface MainCategory {
   id: number;
   name: string;
@@ -23,11 +23,11 @@ export default function MainCategoryPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/Complaint_main_category');
-      if (!res.ok) {
-        throw new Error('Failed to fetch categories');
-      }
-      const data = await res.json();
+      const res = await fetchWithAuth('/items/Complaint_main_category');
+      // if (!res.ok) {
+      //   throw new Error('Failed to fetch categories');
+      // }
+      const data = await res;
       setCategories(data.data);
     } catch (error) {
       console.error('Error fetching categories:', error);

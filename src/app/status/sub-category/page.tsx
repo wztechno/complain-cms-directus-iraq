@@ -91,20 +91,14 @@ export default function StatusSubCategoryPage() {
         return [];
       }
       
-      const response = await fetch(`https://complaint.top-wp.com/items/Complaint_sub_category?filter[district][_eq]=${districtId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await fetchWithAuth(`/items/Complaint_sub_category?filter[district][_eq]=${districtId}`);
       
-      if (!response.ok) {
-        console.error(`Error fetching complaint subcategories: ${response.status}`);
-        return [];
-      }
+      // if (!response.ok) {
+      //   console.error(`Error fetching complaint subcategories: ${response.status}`);
+      //   return [];
+      // }
       
-      const data = await response.json();
+      const data = await response;
       
       if (data && data.data) {
         console.log(`Found ${data.data.length} complaint subcategories for district ${districtId}`);
@@ -253,22 +247,22 @@ export default function StatusSubCategoryPage() {
   
       if (userPermissions.isAdmin) {
         // Admin: Fetch all subcategories
-        resData = await fetch(`https://complaint.top-wp.com/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
+        resData = await fetchWithAuth(`/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(true);
       } else {
         // Non-admin: Filter by district
-        resData = await fetch(`https://complaint.top-wp.com/items/Status_subcategory?filter[district][_eq]=${district_id}&fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
+        resData = await fetchWithAuth(`/items/Status_subcategory?filter[district][_eq]=${district_id}&fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(false);
       }
       
-      const res = await resData.json();
+      const res = await resData;
       console.log("res", res);
       if (!res?.data) throw new Error("No data returned");
       setSubCategories(res.data);
 
       // Fetch complaint subcategories based on user's district or all if admin
-      const  complaintSubCategoriesData = await fetch(`https://complaint.top-wp.com/items/Complaint_sub_category?filter[district][_eq]=${district_id}`);
-      const complaintSubCategoriesResponse = await complaintSubCategoriesData.json();
+      const  complaintSubCategoriesData = await fetchWithAuth(`/items/Complaint_sub_category?filter[district][_eq]=${district_id}`);
+      const complaintSubCategoriesResponse = await complaintSubCategoriesData;
       if (complaintSubCategoriesResponse && complaintSubCategoriesResponse.data) {
         console.log("complaintSubCategories", complaintSubCategoriesResponse.data);
         setComplaintSubCategories(complaintSubCategoriesResponse.data);
@@ -459,7 +453,7 @@ export default function StatusSubCategoryPage() {
       }
       
       // Build URL with proper filtering - if we have a district, filter by both district and complaint subcategory
-      let url = `https://complaint.top-wp.com/items/Status_subcategory?filter[complaint_subcategory][_eq]=${complaintSubcategoryId}`;
+      let url = `/items/Status_subcategory?filter[complaint_subcategory][_eq]=${complaintSubcategoryId}`;
       
       if (selectedDistrictId) {
         url += `&filter[district][_eq]=${selectedDistrictId}`;
@@ -470,13 +464,7 @@ export default function StatusSubCategoryPage() {
       
       console.log(`Making direct API request to: ${url}`);
       
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await fetchWithAuth(url);
       
       if (!response.ok) {
         console.error(`Error fetching status subcategories: ${response.status}`);

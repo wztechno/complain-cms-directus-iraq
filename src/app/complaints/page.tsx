@@ -127,7 +127,7 @@ export default function ComplaintsPage() {
       const districtMapTyped = new Map<number, string>();
       districtsData.forEach((d: District) => districtMapTyped.set(d.id, d.name));
 
-      const locationResp = await fetchWithAuth('https://complaint.top-wp.com/items/location');
+      const locationResp = await fetchWithAuth('/items/location');
       // const locationRespJson = await locationResp.json();
       const locationData = locationResp?.data ?? [];
       // id → { latitude, longitude }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { FaCalendarAlt, FaFilter, FaPlus, FaPen, FaTrash } from 'react-icons/fa';
 import { GrFilter } from 'react-icons/gr';
 import PermissionGuard from '@/components/PermissionGuard';
+import { fetchWithAuth } from '@/utils/api';
 
 interface NewsItem {
   id: string;
@@ -70,23 +71,16 @@ export default function NewsPage() {
   const fetchNews = async () => {
     try {
       setLoading(true);
-      const response = await fetch('https://complaint.top-wp.com/items/news');
+      const response = await fetchWithAuth('/items/news');
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch news');
+      if (response && response.data) {
+        setNewsItems(response.data);
+      } else {
+        setNewsItems([]);
       }
-      
-      const data = await response.json();
-      
-      // Sort by date (newest first)
-      const sortedNews = data.data.sort((a: NewsItem, b: NewsItem) => {
-        return new Date(b.date_created).getTime() - new Date(a.date_created).getTime();
-      });
-      
-      setNewsItems(sortedNews);
-      setFilteredNews(sortedNews);
     } catch (error) {
       console.error('Error fetching news:', error);
+      setNewsItems([]);
     } finally {
       setLoading(false);
     }
@@ -184,24 +178,9 @@ export default function NewsPage() {
     try {
       setDeleting(true);
       
-      // Get token for authentication
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        alert('جلسة تسجيل الدخول منتهية. يرجى تسجيل الدخول مرة أخرى.');
-        router.push('/login');
-        return;
-      }
-      
-      const response = await fetch(`https://complaint.top-wp.com/items/news/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      await fetchWithAuth(`/items/news/${id}`, {
+        method: 'DELETE'
       });
-      
-      if (!response.ok) {
-        throw new Error('فشل في حذف الخبر');
-      }
       
       // Remove the deleted item from state
       setNewsItems(prev => prev.filter(item => item.id !== id));

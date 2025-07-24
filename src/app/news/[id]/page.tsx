@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { FaArrowRight, FaPen, FaTrash, FaCalendarAlt } from 'react-icons/fa';
+import { fetchWithAuth } from '@/utils/api';
 
 interface NewsItem {
   id: string;
@@ -58,13 +59,13 @@ export default function NewsDetailPage({ params }: NewsPageParams) {
   const fetchNewsItem = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`https://complaint.top-wp.com/items/news/${params.id}`);
+      const response = await fetchWithAuth(`/items/news/${params.id}`);
       
-      if (!response.ok) {
+      if (!response) {
         throw new Error('Failed to fetch news item');
       }
       
-      const data = await response.json();
+      const data = await response;
       setNewsItem(data.data);
     } catch (error) {
       console.error('Error fetching news item:', error);

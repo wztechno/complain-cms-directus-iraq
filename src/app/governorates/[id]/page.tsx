@@ -30,11 +30,11 @@ export default function GovernorateDetailsPage({ params }: { params: { id: strin
   const fetchGovernorateDetails = async () => {
     try {
       // Fetch governorate details
-      const res = await fetch(`https://complaint.top-wp.com/items/District/${params.id}`);
-      if (!res.ok) {
+      const res = await fetchWithAuth(`/items/District/${params.id}`);
+      if (!res) {
         throw new Error('Failed to fetch governorate details');
       }
-      const data = await res.json();
+      const data = await res;
       const governorateData: Governorate = data.data;
 
       // Fetch districts for this governorate

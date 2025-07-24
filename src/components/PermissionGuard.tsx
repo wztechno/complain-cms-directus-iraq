@@ -22,7 +22,7 @@ interface ComplaintData {
     governorate_name: string;
     street_name_or_number: string;
     status_subcategory: number | null;
-    Complaint_Subcategory: number | null;
+    complaint_subcategory: number | null;
     district: number | null;
     completion_percentage: number;
     note?: string;

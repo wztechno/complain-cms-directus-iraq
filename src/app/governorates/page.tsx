@@ -5,6 +5,9 @@ import ServiceCard from '@/components/ServiceCard';
 import { useRouter } from 'next/navigation';
 import { exportToCSV } from '@/utils/export';
 import PermissionGuard from '@/components/PermissionGuard';
+import { FaMapMarkerAlt, FaEdit, FaEye, FaUsers } from 'react-icons/fa';
+import { fetchWithAuth } from '@/utils/api';
+import Link from 'next/link';
 
 interface District {
   id: number;
@@ -22,15 +25,17 @@ export default function GovernoratesPage() {
 
   const fetchDistricts = async () => {
     try {
-      const res = await fetch('https://complaint.top-wp.com/items/District?filter[active]=true');
-      if (!res.ok) {
-        throw new Error('Failed to fetch districts');
+      const res = await fetchWithAuth('/items/District?filter[active]=true');
+      
+      if (res && res.data) {
+        setDistricts(res.data);
+      } else {
+        throw new Error('No data received');
       }
-      const data = await res.json();
-      setDistricts(data.data);
-      setLoading(false);
     } catch (error) {
       console.error('Error fetching districts:', error);
+      setError('فشل في تحميل بيانات المحافظات');
+    } finally {
       setLoading(false);
     }
   };
@@ -92,3 +97,7 @@ export default function GovernoratesPage() {
     </PermissionGuard>
   );
 } 
+
+function setError(arg0: string) {
+  throw new Error('Function not implemented.');
+}

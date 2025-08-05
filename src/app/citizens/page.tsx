@@ -26,6 +26,23 @@ interface District {
   name: string;
 }
 
+interface Complaint {
+  id: number;
+  user: number;
+}
+
+interface Rating {
+  id: number;
+  user: number;
+}
+
+interface Notification {
+  id: number;
+  users: {
+    users_id: number;
+  }[];
+}
+
 export default function CitizensPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
@@ -84,56 +101,103 @@ export default function CitizensPage() {
       setDistricts(districtRes.data);
       setLoading(false);
       
-      // Then fetch statistics (don't block the UI)
+      // Then fetch statistics in bulk (don't block the UI)
       setLoadingStats(true);
       try {
-        // Fetch statistics for each user
-        const usersWithStats = await Promise.all(
-          filteredData.map(async (user: User) => {
-            try {
-              // Fetch user statistics in parallel
-              const [complaintsRes, ratingsRes, notificationsRes] = await Promise.all([
-                fetchWithAuth(`/items/Complaint?filter[user][_eq]=${user.id}`),
-                fetchWithAuth(`/items/Complaint_ratings?filter[user][_eq]=${user.id}`),
-                fetchWithAuth(`/items/notification?filter[users][users_id][_eq]=${user.id}`)
-              ]);
+        // Extract all user IDs for bulk filtering
+        const userIds = filteredData.map((user: User) => user.id);
+        const userIdsParam = userIds.join(',');
+        
+        console.log('Fetching notifications for user IDs:', userIdsParam);
+        
+        // Fetch all statistics in parallel using bulk queries with _in operator
+        const [complaintsRes, ratingsRes, notificationsRes] = await Promise.all([
+          fetchWithAuth(`/items/Complaint?filter[user][_in]=${userIdsParam}&fields=id,user&limit=-1`),
+          fetchWithAuth(`/items/Complaint_ratings?filter[user][_in]=${userIdsParam}&fields=id,user&limit=-1`),
+          fetchWithAuth(`/items/notification?filter[users][users_id][_in]=${userIdsParam}&fields=id,users.users_id&limit=-1`)
+        ]);
 
-              // Process the responses
-              const complaintsData = await complaintsRes;
-              const ratingsData = await ratingsRes;
-              const notificationsData = await notificationsRes;
+        // Process the bulk responses
+        const complaintsData = await complaintsRes;
+        const ratingsData = await ratingsRes;
+        const notificationsData = await notificationsRes;
 
-              if (notificationsData.data?.length > 0) {
-                setShowNotifications(true);
-              }
-              // Add statistics to user object
-              return {
-                ...user,
-                stats: {
-                  complaints: complaintsData.data?.length || 0,
-                  ratings: ratingsData.data?.length || 0,
-                  notifications: notificationsData.data?.length || 0
-                }
-              };
-            } catch (error) {
-              console.error(`Error fetching statistics for user ${user.id}:`, error);
-              // Return user with empty stats if error occurs
-              return {
-                ...user,
-                stats: {
-                  complaints: 0,
-                  ratings: 0,
-                  notifications: 0
-                }
-              };
+        // Debug logging for notifications
+        console.log('Notifications API response:', notificationsData);
+        if (notificationsData?.data) {
+          console.log('Notifications data:', notificationsData.data);
+          console.log('Sample notification structure:', notificationsData.data[0]);
+        }
+
+        // Create user statistics maps for O(1) lookup
+        const complaintsMap = new Map<number, number>();
+        const ratingsMap = new Map<number, number>();
+        const notificationsMap = new Map<number, number>();
+
+        // Process complaints data
+        if (complaintsData?.data && Array.isArray(complaintsData.data)) {
+          complaintsData.data.forEach((complaint: Complaint) => {
+            const userId = complaint.user;
+            if (userId) {
+              complaintsMap.set(userId, (complaintsMap.get(userId) || 0) + 1);
             }
-          })
-        );
+          });
+        }
+
+        // Process ratings data
+        if (ratingsData?.data && Array.isArray(ratingsData.data)) {
+          ratingsData.data.forEach((rating: Rating) => {
+            const userId = rating.user;
+            if (userId) {
+              ratingsMap.set(userId, (ratingsMap.get(userId) || 0) + 1);
+            }
+          });
+        }
+
+        // Process notifications data (handle nested structure)
+        if (notificationsData?.data && Array.isArray(notificationsData.data)) {
+          if (notificationsData.data.length > 0) {
+            setShowNotifications(true);
+          }
+          
+          notificationsData.data.forEach((notification: Notification) => {
+            // Handle the users array structure - each notification can have multiple users
+            if (notification.users && Array.isArray(notification.users)) {
+              notification.users.forEach((userRelation) => {
+                const userId = userRelation.users_id;
+                if (userId) {
+                  notificationsMap.set(userId, (notificationsMap.get(userId) || 0) + 1);
+                }
+              });
+            }
+          });
+        }
+
+        // Apply statistics to users in a single pass
+        const usersWithStats = filteredData.map((user: User) => ({
+          ...user,
+          stats: {
+            complaints: complaintsMap.get(user.id) || 0,
+            ratings: ratingsMap.get(user.id) || 0,
+            notifications: notificationsMap.get(user.id) || 0
+          }
+        }));
 
         setUsers(usersWithStats);
         setFilteredUsers(handleFilterWithData(usersWithStats)); // Apply current filters to new data
       } catch (statsError) {
         console.error('Error fetching user statistics:', statsError);
+        // Set users with empty stats if error occurs
+        const usersWithEmptyStats = filteredData.map((user: User) => ({
+          ...user,
+          stats: {
+            complaints: 0,
+            ratings: 0,
+            notifications: 0
+          }
+        }));
+        setUsers(usersWithEmptyStats);
+        setFilteredUsers(handleFilterWithData(usersWithEmptyStats));
       } finally {
         setLoadingStats(false);
       }

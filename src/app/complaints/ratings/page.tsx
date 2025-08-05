@@ -71,6 +71,10 @@ export default function RatingsPage() {
       // }
       const data = await res;
       console.log("data", data);
+      
+      // Filter out ratings where the complaint has been deleted
+      const validRatings = data.data.filter((rating: Rating) => rating.complaint && rating.complaint.id);
+      
       // Fetch both complaint and user details for each rating
       // const ratingsWithDetails = await Promise.all(
       //   data.data.map(async (rating: Rating) => {
@@ -98,9 +102,8 @@ export default function RatingsPage() {
       //   })
       // );
 
-      setRatings(data.data);
-      setFilteredRatings(data.data);
-      console.log("filteredRatings", filteredRatings);
+      setRatings(validRatings);
+      setFilteredRatings(validRatings);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching ratings:', error);
@@ -110,6 +113,9 @@ export default function RatingsPage() {
 
   const handleFilter = () => {
     let filtered = [...ratings];
+
+    // Always filter out ratings with deleted complaints
+    filtered = filtered.filter(rating => rating.complaint && rating.complaint.id);
 
     if (filters.rating) {
       filtered = filtered.filter(rating => 

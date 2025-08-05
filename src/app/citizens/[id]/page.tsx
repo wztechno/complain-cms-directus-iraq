@@ -33,7 +33,6 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
   const [user, setUser] = useState<UserWithComplaints | null>(null);
   const [districtName, setDistrictName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notification, setNotification] = useState({ name: '', content: '' });
   const [isSending, setIsSending] = useState(false);
@@ -41,41 +40,37 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
 
   useEffect(() => {
     fetchUserDetails();
-    checkAdminStatus();
   }, [params.id]);
-
-  const checkAdminStatus = () => {
-    const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
-    try {
-      const storedUserInfo = localStorage.getItem('user_info');
-      if (storedUserInfo) {
-        const userInfoData = JSON.parse(storedUserInfo);
-        const admin = userInfoData?.role === ADMIN_ROLE_ID;
-        setIsAdmin(admin);
-      }
-    } catch (error) {
-      console.error("Error checking admin role:", error);
-      setIsAdmin(false);
-    }
-  };
 
   const fetchUserDetails = async () => {
     try {
       // Fetch user details
       const res = await fetchWithAuth(`/items/users/${params.id}`);
-      // if (!res.ok) {
-      //   throw new Error('Failed to fetch user details');
-      // }
       const data = await res;
       const userData: UserWithComplaints = data.data;
 
-      // Fetch user's complaints
+      // Fetch user's complaints using direct fetch to bypass permission filtering
       try {
-        const complaintsRes = await fetchWithAuth(`/items/Complaint?filter[user][_eq]=${params.id}`);
-        if (complaintsRes) {
-          const complaintsData = await complaintsRes;
-          userData.complaints = complaintsData.data;
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          const BASE_URL = 'https://complaint.top-wp.com';
+          const complaintsUrl = `${BASE_URL}/items/Complaint?filter[user][_eq]=${params.id}`;
+          
+          const complaintsResponse = await fetch(complaintsUrl, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (complaintsResponse.ok) {
+            const complaintsData = await complaintsResponse.json();
+            userData.complaints = complaintsData.data;
+          } else {
+            console.error('Error fetching user complaints:', complaintsResponse.status);
+          }
         }
+        console.log("userData.complaints", userData.complaints);
       } catch (error) {
         console.error('Error fetching user complaints:', error);
       }
@@ -123,13 +118,13 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
         name: notification.name,
         content: notification.content,
         users: {
-          create: [{ Users_id: parseInt(params.id, 10) }],
+          create: [{ users_id: parseInt(params.id, 10) }],
           delete: []
         }
       };
       
       // Send the notification
-      const response = await fetch('https://complaint.top-wp.com/items/notification', {
+      const response = await fetchWithAuth('/items/notification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,20 +133,13 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
         body: JSON.stringify(notificationData)
       });
       
-      if (response.ok) {
-        alert('تم إرسال الإشعار بنجاح');
-        setNotification({ name: '', content: '' });
-        setShowNotificationModal(false);
-      } else {
-        let errorDetails = '';
-        try {
-          const errorJson = await response.json();
-          errorDetails = errorJson.errors ? errorJson.errors.map((err: { message: string }) => err.message).join('; ') : 'خطأ غير معروف';
-        } catch {
-          errorDetails = await response.text();
-        }
-        alert(`حدث خطأ أثناء إرسال الإشعار: ${errorDetails}`);
-      }
+      // fetchWithAuth returns parsed JSON data directly on success
+      console.log('Notification created successfully:', response);
+      
+      // Reset form and show success message
+      alert('تم إرسال الإشعار بنجاح');
+      setNotification({ name: '', content: '' });
+      setShowNotificationModal(false);
     } catch (error) {
       console.error('Error sending notification:', error);
       alert(`حدث خطأ أثناء إرسال الإشعار: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
@@ -205,15 +193,13 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
             </div>
           </div>
           
-          {/* {isAdmin && ( */}
-            <button 
-              onClick={() => setShowNotificationModal(true)}
-              className="bg-[#4664AD] hover:bg-[#3A5499] text-white px-4 py-2 rounded-lg flex items-center gap-2"
-            >
-              <FaBell size={14} />
-              <span>إرسال إشعار</span>
-            </button>
-          {/* )} */}
+          <button 
+            onClick={() => setShowNotificationModal(true)}
+            className="bg-[#4664AD] hover:bg-[#3A5499] text-white px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <FaBell size={14} />
+            <span>إرسال إشعار</span>
+          </button>
         </div>
 
         {/* Notification Modal */}

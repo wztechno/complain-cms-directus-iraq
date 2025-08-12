@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FaPlus, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { FaPlus, FaEye, FaEyeSlash, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import { GrFilter } from 'react-icons/gr';
 import PermissionGuard from '@/components/PermissionGuard';
 
@@ -29,6 +29,10 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12); // Show 12 employees per page (3x4 grid)
 
   const [filters, setFilters] = useState({
     name: '',
@@ -53,6 +57,11 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     handleFilter();
+  }, [filters]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
   }, [filters]);
 
   const fetchEmployeesAndRoles = async () => {
@@ -179,6 +188,25 @@ export default function EmployeesPage() {
     return role ? role.name : 'غير محدد';
   };
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentEmployees = filteredEmployees.slice(startIndex, endIndex);
+
+  // Pagination handlers
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
   const formatLastAccess = (lastAccess: string | undefined) => {
     if (!lastAccess) return 'لم يسجل دخول';
     return new Date(lastAccess).toLocaleDateString('ar-EG');
@@ -281,7 +309,7 @@ export default function EmployeesPage() {
 
         {/* Employees Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredEmployees.map((employee) => (
+          {currentEmployees.map((employee) => (
             <div
               key={employee.id}
               className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow"
@@ -315,6 +343,34 @@ export default function EmployeesPage() {
             </div>
           ))}
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex justify-between items-center">
+            <div className="text-sm text-gray-600">
+              عرض {startIndex + 1}-{Math.min(endIndex, filteredEmployees.length)} من {filteredEmployees.length} موظف
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={goToPreviousPage}
+                disabled={currentPage === 1}
+                className={`p-2 rounded-lg ${currentPage === 1 ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}
+              >
+                <FaChevronRight />
+              </button>
+              <div className="flex items-center justify-center px-4 py-2 bg-white rounded-lg shadow-sm">
+                {currentPage} / {totalPages}
+              </div>
+              <button
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages}
+                className={`p-2 rounded-lg ${currentPage === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}
+              >
+                <FaChevronLeft />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Add Employee Modal */}
         {showAddModal && (

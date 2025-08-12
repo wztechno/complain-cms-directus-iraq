@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GrFilter } from 'react-icons/gr';
+import { FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import { fetchWithAuth } from '@/utils/api';
 import { exportToCSV } from '@/utils/export';
 import PermissionGuard from '@/components/PermissionGuard';
@@ -52,6 +53,11 @@ export default function CitizensPage() {
   const [loadingStats, setLoadingStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12); // Show 12 users per page (3x4 grid)
+  
   const router = useRouter();
 
   const [filters, setFilters] = useState({
@@ -69,6 +75,11 @@ export default function CitizensPage() {
 
   useEffect(() => {
     handleFilter();
+  }, [filters]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
   }, [filters]);
 
   const fetchUsersAndDistricts = async () => {
@@ -272,6 +283,25 @@ export default function CitizensPage() {
     router.push(`/citizens/${userId}`);
   };
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentUsers = filteredUsers.slice(startIndex, endIndex);
+
+  // Pagination handlers
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 mr-64 flex justify-center items-center min-h-screen">
@@ -386,8 +416,20 @@ export default function CitizensPage() {
         </div>
       )}
 
+      {/* Results count and pagination info */}
+      <div className="mb-4 flex justify-between items-center">
+        <div className="text-sm text-gray-600">
+          عرض {startIndex + 1}-{Math.min(endIndex, filteredUsers.length)} من {filteredUsers.length} مواطن
+        </div>
+        {totalPages > 1 && (
+          <div className="text-sm text-gray-600">
+            الصفحة {currentPage} من {totalPages}
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredUsers.map((user) => (
+        {currentUsers.map((user) => (
           <div
             key={user.id}
             className="bg-white rounded-lg shadow-md p-6 cursor-pointer hover:shadow-lg transition-shadow"
@@ -441,7 +483,35 @@ export default function CitizensPage() {
           </div>
         ))}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-8 flex justify-between items-center">
+          <div className="text-sm text-gray-600">
+            عرض {startIndex + 1}-{Math.min(endIndex, filteredUsers.length)} من {filteredUsers.length} مواطن
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={goToPreviousPage}
+              disabled={currentPage === 1}
+              className={`p-2 rounded-lg ${currentPage === 1 ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}
+            >
+              <FaChevronRight />
+            </button>
+            <div className="flex items-center justify-center px-4 py-2 bg-white rounded-lg shadow-sm">
+              {currentPage} / {totalPages}
+            </div>
+            <button
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages}
+              className={`p-2 rounded-lg ${currentPage === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}
+            >
+              <FaChevronLeft />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
     </PermissionGuard>
   );
-}
+} 

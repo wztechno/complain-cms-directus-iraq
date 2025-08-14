@@ -1,46 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// ============================
-// Complaint Management React pages (refactored)
-// ============================
-// 1. ComplaintPage (detail) + 2. ComplaintPercentageCalculator handled earlier
-// 3. ComplaintsPage (listing) below
-
-// -----------------------------------------------
-// ComplaintsPage – LIST VIEW WITH FILTERS/PAGING
-// -----------------------------------------------
-
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  GrFilter
-} from 'react-icons/gr';
-import {
-  FaFileDownload,
-  FaPlus,
-  FaChevronRight,
-  FaChevronLeft
-} from 'react-icons/fa';
+import { GrFilter } from 'react-icons/gr';
+import { FaFileDownload, FaPlus, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import ComplaintCard from '@/components/ComplaintCard';
 import { fetchWithAuth } from '@/utils/api';
-import {
-  getUserPermissions,
-  complaintMatchesPermissions
-} from '@/utils/permissions';
-import {
-  buildStatusToUserMap,
-  StatusToUserMap
-} from '@/utils/responsible-users';
+import { getUserPermissions } from '@/utils/permissions';
+import { buildStatusToUserMap, StatusToUserMap } from '@/utils/responsible-users';
 
 const BASE_URL = 'https://complaint.top-wp.com';
 
-// -----------------------------
-// Type helpers
-// -----------------------------
-interface District {
-  id: number;
-  name: string;
-}
+interface District { id: number; name: string; }
 interface Complaint {
   id: string;
   title: string;
@@ -65,15 +36,10 @@ interface Complaint {
     district_id: number | null;
   };
 }
-// interface User { firstName: string; lastName: string; }
 
-// -----------------------------
-// Main component
-// -----------------------------
 export default function ComplaintsPage() {
   /* UI + filter state */
   const [showFilters, setShowFilters] = useState(false);
-  const [showExportOptions, setShowExportOptions] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
@@ -97,17 +63,16 @@ export default function ComplaintsPage() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [filtered, setFiltered] = useState<Complaint[]>([]);
 
-  /* paging */
-  const perPage = 10;
-  const pageSlice = (arr: Complaint[]) => {
-    const start = (currentPage - 1) * perPage;
-    return arr.slice(start, start + perPage);
-  };
+  // NEW: total count from Directus meta (after permissions), to compute total pages
+  const [totalCount, setTotalCount] = useState(0);
+
+  /* server-side paging */
+  const perPage = 25;
 
   /* ------------------------------------------------
-   * Master fetch routine
+   * Master fetch routine (server-side pagination)
    * ------------------------------------------------*/
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (page: number) => {
     setLoading(true);
     try {
       /* 1️⃣ user perms + isAdmin */
@@ -127,49 +92,62 @@ export default function ComplaintsPage() {
       const districtMapTyped = new Map<number, string>();
       districtsData.forEach((d: District) => districtMapTyped.set(d.id, d.name));
 
-      const locationResp = await fetchWithAuth('/items/location');
-      // const locationRespJson = await locationResp.json();
+      /* location lookup (for coords linking) */
+      const locationResp = await fetchWithAuth('/items/location?limit=-1'); // all locations; cheap if small
       const locationData = locationResp?.data ?? [];
-      // id → { latitude, longitude }
       const locationMap = new Map<number, { latitude: number; longitude: number }>();
-      locationData.forEach((loc: any) =>
-        locationMap.set(loc.id, { latitude: loc.latitude, longitude: loc.longitude })
+      locationData.forEach((loc: any) => locationMap.set(loc.id, { latitude: loc.latitude, longitude: loc.longitude }));
+
+      /* 4️⃣ complaints core list – server-side pagination */
+      // permissions (OR) filter same as before
+      let base = '/items/Complaint';
+      const orParts: string[] = [];
+      if (!admin && perms) {
+        if (perms.districtIds?.length) orParts.push(`district={${perms.districtIds.join(',')}}`);
+        if (perms.statusSubcategoryIds?.length) orParts.push(`status_subcategory={${perms.statusSubcategoryIds.join(',')}}`);
+      }
+      const orFilter = (!admin && orParts.length) ? `filter[_or]=[${orParts.join(',')}]&` : '';
+
+      // Ask Directus for filter_count meta so we can compute total pages
+      const url = `${base}?${orFilter}limit=${perPage}&page=${page}&meta=filter_count`;
+
+      const compResp = await fetchWithAuth(url);
+      const metaFilterCount = Number(compResp?.meta?.filter_count ?? 0);
+      setTotalCount(metaFilterCount);
+
+      const compArr: Complaint[] = await enrichComplaints(
+        compResp.data ?? [],
+        districtMapTyped,
+        statusToUser,
+        locationMap
       );
 
-      /* 4️⃣ complaints core list */
-      let url = '/items/Complaint';
-      if (!admin && perms) {
-        const f: string[] = [];
-        if (perms.districtIds?.length) f.push(`district={${perms.districtIds.join(',')}}`);
-        if (perms.statusSubcategoryIds?.length) f.push(`status_subcategory={${perms.statusSubcategoryIds.join(',')}}`);
-        if (f.length) url += `?filter[_or]=[${f.join(',')}]`;
-      }
-      const compResp = await fetchWithAuth(url);
-      const compArr: Complaint[] = await enrichComplaints(compResp.data, districtMapTyped, statusToUser, locationMap);
-
-      /* 5️⃣ build filter dropdown data */
+      /* 5️⃣ build filter dropdown data (based on current page) */
       setTitleList(unique(compArr.map((c) => c.title || '')));
       setStatusList(unique(compArr.map((c) => c.status || '')));
       setCompletionList(unique(compArr.map((c) => String(c.completion_percentage || ''))).sort((a, b) => +a - +b));
 
       /* 6️⃣ commit */
       setComplaints(compArr);
-      setFiltered(compArr);
+      setFiltered(sortByDate(compArr));
+      setSelectedIds([]); // clear selections when page changes
     } catch (e) {
       console.error(e);
       setComplaints([]);
       setFiltered([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [perPage]);
 
+  // initial + whenever currentPage changes
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadData(currentPage);
+  }, [currentPage, loadData]);
 
   /* ------------------------------------------------
-   * Filtering logic
+   * Filtering logic (client-side on the current page)
    * ------------------------------------------------*/
   useEffect(() => {
     let out = [...complaints];
@@ -179,25 +157,23 @@ export default function ComplaintsPage() {
     if (f.title) out = out.filter((c) => c.title === f.title);
     if (f.status) out = out.filter((c) => c.status === f.status);
     if (f.completion) out = out.filter((c) => String(c.completion_percentage) === f.completion);
-    if (f.serviceType)
+    if (f.serviceType) {
       out = out.filter((c) =>
         f.serviceType === 'خدمات فردية' || f.serviceType === 'خدمات عامة'
           ? c.Service_type === f.serviceType
           : c.Service_type === f.serviceType
       );
-    if (f.startDate)
-      out = out.filter((c) => new Date(c.statusDate || c.date || 0) >= new Date(f.startDate));
-    if (f.endDate)
-      out = out.filter((c) => new Date(c.statusDate || c.date || 0) <= new Date(f.endDate));
+    }
+    if (f.startDate) out = out.filter((c) => new Date(c.statusDate || c.date || 0) >= new Date(f.startDate));
+    if (f.endDate) out = out.filter((c) => new Date(c.statusDate || c.date || 0) <= new Date(f.endDate));
     setFiltered(sortByDate(out));
-    setCurrentPage(1);
+    // When filters change, stay on the same server page (we're filtering the fetched page only)
   }, [filters, complaints]);
 
   /* ------------------------------------------------
    * Helpers
    * ------------------------------------------------*/
   const unique = <T,>(arr: T[]) => Array.from(new Set(arr.filter(Boolean)));
-
   const sortByDate = (arr: Complaint[]) =>
     [...arr].sort((a, b) => new Date(b.statusDate || b.date || 0).getTime() - new Date(a.statusDate || a.date || 0).getTime());
 
@@ -207,7 +183,7 @@ export default function ComplaintsPage() {
     statusUser: StatusToUserMap,
     locationMap: Map<number, { latitude: number; longitude: number }>
   ): Promise<Complaint[]> {
-    // Handle ID-only array => fetch objects
+    // Normalize ID-only array => fetch objects
     if (data.length && (typeof data[0] === 'string' || typeof data[0] === 'number')) {
       const batchFetch = async (id: string | number) => {
         const r = await fetch(`${BASE_URL}/items/Complaint/${id}`, {
@@ -218,9 +194,9 @@ export default function ComplaintsPage() {
       data = (await Promise.all(data.map(batchFetch))).filter(Boolean);
     }
 
-    // status subcategory meta (once)
+    // status subcategory meta (once per load)
     const subRes = await fetchWithAuth(
-      'https://complaint.top-wp.com/items/Status_subcategory?fields=*,status_category.*'
+      `${BASE_URL}/items/Status_subcategory?fields=*,status_category.*`
     );
 
     return sortByDate(
@@ -230,7 +206,6 @@ export default function ComplaintsPage() {
         const respUser = statusUser[String(c.status_subcategory)] ?? 'غير محدد';
         let locationObj = c.location;
         if (locationObj && typeof locationObj !== 'object') {
-          // relation stored as id → look up full coords
           const coords = locationMap.get(Number(locationObj));
           if (coords) locationObj = { id: Number(locationObj), ...coords };
         }
@@ -246,21 +221,20 @@ export default function ComplaintsPage() {
   }
 
   /* ------------------------------------------------
-   * CSV export helper
+   * CSV export helper (exports current filtered list)
    * ------------------------------------------------*/
   const exportCsv = useCallback((scope: 'all' | 'selected') => {
-    if (typeof window === 'undefined') return; // Guard against server-side execution
-  
+    if (typeof window === 'undefined') return;
+
     const list = scope === 'all' ? filtered : filtered.filter((c) => selectedIds.includes(c.id));
     if (!list.length) return alert('لا توجد شكاوى للتصدير');
-  
+
     const rows = [
       ['ID', 'العنوان', 'الوصف', 'نوع الخدمة', 'المحافظة', 'نسبة الإكمال', 'التاريخ', 'الموقع'],
       ...list.map((c) => {
         const mapLink = c.location?.latitude && c.location?.longitude
           ? `"=HYPERLINK(""https://www.google.com/maps?q=${c.location.latitude},${c.location.longitude}"", ""عرض الموقع"")"`
           : '';
-  
         return [
           c.id,
           `"${c.title || ''}"`,
@@ -275,30 +249,23 @@ export default function ComplaintsPage() {
     ]
       .map((r) => r.join(','))
       .join('\n');
-  
+
     const blob = new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `complaints_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
-    setShowExportOptions(false);
   }, [filtered, selectedIds]);
-  
 
   /* ------------------------------------------------
    * Render helpers
    * ------------------------------------------------*/
-  const pageComplaints = useMemo(() => pageSlice(filtered), [filtered, currentPage]);
-  const totalPages = Math.ceil(filtered.length / perPage) || 1;
-
+  const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  /* ------------------------------------------------
-   * JSX
-   * ------------------------------------------------*/
-
-  console.log("complaints",complaints);
+  const startIdx = (currentPage - 1) * perPage + 1;
+  const endIdx = Math.min(currentPage * perPage, totalCount || startIdx - 1);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
@@ -329,19 +296,16 @@ export default function ComplaintsPage() {
         {loading ? (
           <EmptyState text="جاري تحميل البيانات..." />
         ) : !filtered.length ? (
-          <EmptyState text="لا توجد شكاوى" sub="قد يكون هذا بسبب عدم وجود شكاوى مسجلة، أو بسبب عدم وجود صلاحيات للوصول إلى الشكاوى المتاحة." />
+          <EmptyState text="لا توجد شكاوى" sub="قد يكون هذا بسبب عدم وجود شكاوى في هذه الصفحة أو عدم وجود صلاحيات." />
         ) : (
           <>
-            <Grid complaints={pageComplaints} selected={selectedIds} onSelect={toggleSelect} />
+            <Grid complaints={filtered} selected={selectedIds} onSelect={toggleSelect} />
             <Pagination
               current={currentPage}
               totalPages={totalPages}
               onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
               onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              rangeText={`عرض ${(currentPage - 1) * perPage + 1} - ${Math.min(
-                currentPage * perPage,
-                filtered.length
-              )} من ${filtered.length} شكوى`}
+              rangeText={`عرض ${startIdx} - ${endIdx} من ${totalCount} شكوى`}
             />
           </>
         )}
@@ -350,19 +314,11 @@ export default function ComplaintsPage() {
   );
 }
 
-// -----------------------------------------------
-// Sub components (Header, Filters, Grid, Pagination, Empty)
-// -----------------------------------------------
-// import { GrFilter } from 'react-icons/gr';
-// import { FaFileDownload, FaPlus, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
+/* -----------------------------------------------
+   Sub components (unchanged except props)
+----------------------------------------------- */
 
-const Header = ({
-  showFilters,
-  setShowFilters,
-  isAdmin,
-  selectedCount,
-  onExport
-}: any) => (
+const Header = ({ showFilters, setShowFilters, isAdmin, selectedCount, onExport }: any) => (
   <div className="flex justify-between items-center mb-8">
     <h1 className="text-3xl font-bold">قائمة الشكاوى</h1>
     <div className="flex gap-4">
@@ -387,29 +343,26 @@ interface ExportDropdownProps {
   selectedCount: number;
   onExport: (scope: 'all' | 'selected') => void;
 }
-
-const ExportDropdown: React.FC<ExportDropdownProps> = ({ selectedCount, onExport }) => {
-  return (
-    <div className="relative">
+const ExportDropdown: React.FC<ExportDropdownProps> = ({ selectedCount, onExport }) => (
+  <div className="relative">
+    <button
+      onClick={() => onExport('all')}
+      className="bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499] flex items-center gap-2"
+    >
+      <FaFileDownload />
+      <span>تصدير الكل</span>
+    </button>
+    {selectedCount > 0 && (
       <button
-        onClick={() => onExport('all')}
-        className="bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499] flex items-center gap-2"
+        onClick={() => onExport('selected')}
+        className="mt-2 bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499] flex items-center gap-2"
       >
         <FaFileDownload />
-        <span>تصدير الكل</span>
+        <span>تصدير {selectedCount} مختارة</span>
       </button>
-      {selectedCount > 0 && (
-        <button
-          onClick={() => onExport('selected')}
-          className="mt-2 bg-[#4664AD] text-white px-4 py-2 rounded-lg hover:bg-[#3A5499] flex items-center gap-2"
-        >
-          <FaFileDownload />
-          <span>تصدير {selectedCount} مختارة</span>
-        </button>
-      )}
-    </div>
-  );
-};
+    )}
+  </div>
+);
 
 interface FiltersProps {
   districts: District[];
@@ -418,131 +371,92 @@ interface FiltersProps {
   completions: string[];
   isAdmin: boolean;
   filters: {
-    id: string;
-    governorate: string;
-    title: string;
-    status: string;
-    completion: string;
-    serviceType: string;
-    startDate: string;
-    endDate: string;
+    id: string; governorate: string; title: string; status: string;
+    completion: string; serviceType: string; startDate: string; endDate: string;
   };
   setFilters: React.Dispatch<React.SetStateAction<{
-    id: string;
-    governorate: string;
-    title: string;
-    status: string;
-    completion: string;
-    serviceType: string;
-    startDate: string;
-    endDate: string;
+    id: string; governorate: string; title: string; status: string;
+    completion: string; serviceType: string; startDate: string; endDate: string;
   }>>;
 }
+const Filters: React.FC<FiltersProps> = ({ districts, titles, statuses, completions, isAdmin, filters, setFilters }) => (
+  <div className="bg-white rounded-lg p-6 shadow mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <FLT label="رقم الشكوى">
+        <input
+          type="text"
+          value={filters.id}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters((f) => ({ ...f, id: e.target.value }))}
+          className="w-full border border-gray-300 p-2 rounded text-right"
+          placeholder="ابحث برقم الشكوى"
+        />
+      </FLT>
 
-const Filters: React.FC<FiltersProps> = ({
-  districts,
-  titles,
-  statuses,
-  completions,
-  isAdmin,
-  filters,
-  setFilters
-}) => {
-  return (
-    <div className="bg-white rounded-lg p-6 shadow mb-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <FLT label="رقم الشكوى">
-          <input
-            type="text"
-            value={filters.id}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFilters((f) => ({ ...f, id: e.target.value }))
-            }
-            className="w-full border border-gray-300 p-2 rounded text-right"
-            placeholder="ابحث برقم الشكوى"
-          />
-        </FLT>
+      <FLT label="المحافظة">
+        <Select
+          value={filters.governorate}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f) => ({ ...f, governorate: e.target.value }))}
+          list={districts.map((d) => d.name)}
+        />
+      </FLT>
 
-        <FLT label="المحافظة">
-          <Select
-            value={filters.governorate}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setFilters((f) => ({ ...f, governorate: e.target.value }))
-            }
-            list={districts.map((d) => d.name)}
-          />
-        </FLT>
+      <FLT label="عنوان الشكوى">
+        <Select
+          value={filters.title}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f) => ({ ...f, title: e.target.value }))}
+          list={titles}
+        />
+      </FLT>
 
-        <FLT label="عنوان الشكوى">
-          <Select
-            value={filters.title}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setFilters((f) => ({ ...f, title: e.target.value }))
-            }
-            list={titles}
-          />
-        </FLT>
+      <FLT label="نوع الخدمة">
+        <select
+          value={filters.serviceType}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f) => ({ ...f, serviceType: e.target.value }))}
+          className="w-full border border-gray-300 p-2 rounded text-right"
+        >
+          <option value="">الكل</option>
+          <option value="خدمات فردية">خدمات فردية</option>
+          <option value="خدمات عامة">خدمات عامة</option>
+        </select>
+      </FLT>
 
-        <FLT label="نوع الخدمة">
-          <select
-            value={filters.serviceType}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setFilters((f) => ({ ...f, serviceType: e.target.value }))
-            }
-            className="w-full border border-gray-300 p-2 rounded text-right"
-          >
-            <option value="">الكل</option>
-            <option value="خدمات فردية">خدمات فردية</option>
-            <option value="خدمات عامة">خدمات عامة</option>
-          </select>
-        </FLT>
+      <FLT label="الحالة">
+        <Select
+          value={filters.status}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f) => ({ ...f, status: e.target.value }))}
+          list={statuses}
+        />
+      </FLT>
 
-        <FLT label="الحالة">
-          <Select
-            value={filters.status}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setFilters((f) => ({ ...f, status: e.target.value }))
-            }
-            list={statuses}
-          />
-        </FLT>
+      <FLT label="نسبة الإنجاز">
+        <Select
+          value={filters.completion}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f) => ({ ...f, completion: e.target.value }))}
+          list={completions}
+          suffix="%"
+        />
+      </FLT>
 
-        <FLT label="نسبة الإنجاز">
-          <Select
-            value={filters.completion}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setFilters((f) => ({ ...f, completion: e.target.value }))
-            }
-            list={completions}
-            suffix="%"
-          />
-        </FLT>
+      <FLT label="من تاريخ">
+        <input
+          type="date"
+          value={filters.startDate}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters((f) => ({ ...f, startDate: e.target.value }))}
+          className="w-full border border-gray-300 p-2 rounded"
+        />
+      </FLT>
 
-        <FLT label="من تاريخ">
-          <input
-            type="date"
-            value={filters.startDate}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFilters((f) => ({ ...f, startDate: e.target.value }))
-            }
-            className="w-full border border-gray-300 p-2 rounded"
-          />
-        </FLT>
-
-        <FLT label="إلى تاريخ">
-          <input
-            type="date"
-            value={filters.endDate}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFilters((f) => ({ ...f, endDate: e.target.value }))
-            }
-            className="w-full border border-gray-300 p-2 rounded"
-          />
-        </FLT>
-      </div>
+      <FLT label="إلى تاريخ">
+        <input
+          type="date"
+          value={filters.endDate}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters((f) => ({ ...f, endDate: e.target.value }))}
+          className="w-full border border-gray-300 p-2 rounded"
+        />
+      </FLT>
     </div>
-  );
-};
+  </div>
+);
 
 const FLT = ({ label, children }: any) => (
   <div>
@@ -551,12 +465,7 @@ const FLT = ({ label, children }: any) => (
   </div>
 );
 
-interface GridProps {
-  complaints: Complaint[];
-  selected: string[];
-  onSelect: (id: string) => void;
-}
-
+interface GridProps { complaints: Complaint[]; selected: string[]; onSelect: (id: string) => void; }
 const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect }) => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {complaints.map((c) => (
@@ -603,16 +512,11 @@ const EmptyState = ({ text, sub }: any) => (
   </div>
 );
 
-// Add styles using Tailwind classes instead of global styles
 const Select = ({ list, suffix = '', ...rest }: any) => (
-  <select
-    className="w-full border border-gray-300 rounded-md p-2 text-right"
-    {...rest}
-  >
+  <select className="w-full border border-gray-300 rounded-md p-2 text-right" {...rest}>
     {list.map((item: string) => (
       <option key={item} value={item}>
-        {item}
-        {suffix}
+        {item}{suffix}
       </option>
     ))}
   </select>
@@ -632,3 +536,4 @@ const ExportButton: React.FC<{ onExport: () => void }> = ({ onExport }) => {
     </button>
   );
 };
+

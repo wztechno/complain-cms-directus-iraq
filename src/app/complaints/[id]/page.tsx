@@ -274,7 +274,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         return;
       }
       const core: ComplaintData = compRes.data;
-      console.log("core", core);
 
       /* 3️⃣ Parallel look-ups including location */
       const [districtsRes, statusSubRes, complaintSubRes] = await Promise.all([
@@ -401,8 +400,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
 
     setUpdating(true);
     try {
-      console.log("Starting handleSave with complaint:", complaint.id);
-      console.log("Edit form data:", editForm);
 
       // Calculate the new percentage first
       console.log("Fetching complaint data for percentage calculation...");
@@ -414,7 +411,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       const districtId = compRes.data.district;
       const subCatId = compRes.data.Complaint_Subcategory ?? compRes.data.complaint_subcategory;
 
-      console.log("District ID:", districtId, "SubCategory ID:", subCatId);
 
       // Fetch all the data needed for percentage calculation
       console.log("Fetching related data for percentage calculation...");
@@ -444,12 +440,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
       const categories = catRes?.data ?? [];
       const timeline = timelineRes?.data ?? [];
       const allSubs = subRes?.data ?? [];
-
-      console.log("Fetched data:", { 
-        categoriesCount: categories.length, 
-        timelineCount: timeline.length, 
-        allSubsCount: allSubs.length 
-      });
 
       // Calculate done steps
       const doneIds = new Set<string>();
@@ -494,7 +484,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
 
       const newPercentage = totalSteps ? Math.round((totalDone / totalSteps) * 100) : 0;
 
-      console.log("Calculated percentage:", newPercentage);
 
       // Prepare update body with only the fields that have values
       const updateBody: any = {
@@ -513,9 +502,7 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         updateBody.status = editForm.status;
       }
 
-      console.log("Update body:", updateBody);
 
-      console.log("Sending PATCH request to update complaint...");
       const updateResponse = await fetchWithAuth(`/items/Complaint/${complaint.id}`, {
         method: "PATCH",
         headers: {
@@ -524,7 +511,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
         body: JSON.stringify(updateBody),
       });
 
-      console.log("Update response:", updateResponse);
 
       // Only try to update the status_subcategory done field if we have admin permissions
       if (editForm.status_subcategory && editForm.is_done !== undefined) {
@@ -636,8 +622,6 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
   /************
    * Render   *
    ***********/
-console.log("locations", complaint?.location);
-
   if (loading)
     return (
       <div className="min-h-screen bg-gray-100 p-8 mr-64 flex justify-center items-center">

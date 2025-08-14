@@ -21,15 +21,6 @@ if (missingFields.length > 0) {
   throw new Error(`Missing Firebase configuration: ${missingFields.join(', ')}`);
 }
 
-// Debug logging
-console.log('Firebase Config:', {
-  apiKey: firebaseConfig.apiKey ? '***' : 'MISSING',
-  authDomain: firebaseConfig.authDomain || 'MISSING',
-  projectId: firebaseConfig.projectId || 'MISSING',
-  storageBucket: firebaseConfig.storageBucket || 'MISSING',
-  messagingSenderId: firebaseConfig.messagingSenderId || 'MISSING',
-  appId: firebaseConfig.appId ? '***' : 'MISSING'
-});
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

@@ -67,9 +67,7 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
         setLoadingComplaints(false);
         return;
       }
-      
-      console.log('Filtering by category name:', category.name);
-      
+            
       // Get auth token
       const token = localStorage.getItem('auth_token');
       if (!token) {
@@ -80,7 +78,6 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
       
       // Use direct fetch with the simplest URL format
       const directUrl = `/items/Complaint?filter[title][_eq]=${encodeURIComponent(category.name)}`;
-      console.log('Direct API request URL:', directUrl);
       
       const response = await fetch(directUrl, {
         method: 'GET',
@@ -91,19 +88,14 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
       });
       
       if (!response.ok) {
-        console.error(`API error: ${response.status} ${response.statusText}`);
         throw new Error(`API call failed: ${response.status}`);
       }
       
       const data = (await response.json()) as { data: Complaint[] };
-      console.log('API response:', data);
       
       if (!data || !data.data || !Array.isArray(data.data)) {
-        console.error('Invalid response format:', data);
         throw new Error('Invalid API response format');
       }
-      
-      console.log(`Received ${data.data.length} complaints from API`);
       
       // Process complaints data
       const complaintsData: Complaint[] = data.data;

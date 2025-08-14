@@ -78,7 +78,6 @@ export default function CreateComplaintPage() {
           const uniqueServices = [...new Set(
             complaintRes.data.map((item: { service_type?: string }) => item.service_type).filter(Boolean)
           )] as string[];
-          console.log("uniqueServices", complaintRes);
           setServiceTypes(uniqueServices);
         }
 
@@ -255,12 +254,10 @@ export default function CreateComplaintPage() {
         try {
           setUploadingFiles(true);
           setUploadError(null); // Reset any previous error
-          console.log(`Starting upload of ${filesToUpload.length} files...`);
           
           // Upload files one by one
           for (const { file, type } of filesToUpload) {
             try {
-              console.log(`Uploading ${type} file: ${file.name} (${file.type}, ${file.size} bytes)`);
               
               const formData = new FormData();
               formData.append('file', file);
@@ -291,23 +288,22 @@ export default function CreateComplaintPage() {
                 throw new Error('File upload succeeded but no ID was returned');
               }
               
-              console.log(`Successfully uploaded ${type} file. Got ID: ${uploadedId}`);
               
               // Directly add to the final form data based on type
               if (type === 'image') {
                 finalFormData.image = uploadedId;
-                console.log('Added image ID to submission data:', uploadedId);
+                console.log('Added image ID to submission data');
               } else if (type === 'video') {
                 finalFormData.video = uploadedId;
-                console.log('Added video ID to submission data:', uploadedId);
+                console.log('Added video ID to submission data');
               } else if (type === 'voice') {
                 finalFormData.voice = uploadedId;
-                console.log('Added voice ID to submission data:', uploadedId);
+                console.log('Added voice ID to submission data');
               } else if (type === 'file') {
                 // Save this specifically to track it
                 fileId = uploadedId;
                 finalFormData.file = uploadedId;
-                console.log('Added file ID to submission data:', uploadedId);
+                console.log('Added file ID to submission data');
               }
             } catch (fileError) {
               console.error(`Error uploading ${type} file:`, fileError);
@@ -321,11 +317,11 @@ export default function CreateComplaintPage() {
       
       // Double-verify the file ID is in the final data to be submitted
       if (fileId && fileId.length > 10) {
-        console.log('File ID verified to be in final submission:', fileId);
+        console.log('File ID verified to be in final submission');
         finalFormData.file = fileId;
       }
       
-      console.log('FINAL submission data to be sent to API:', finalFormData);
+      console.log('FINAL submission data to be sent to API');
       
       // Send the complete form data
       const response = await fetchWithAuth('/items/Complaint', {
@@ -338,7 +334,7 @@ export default function CreateComplaintPage() {
         throw new Error('Failed to create complaint');
       }
       
-      console.log('Complaint created successfully:', response.data);
+      console.log('Complaint created successfully');
       router.push('/complaints');
     } catch (error) {
       console.error('Error creating complaint:', error);

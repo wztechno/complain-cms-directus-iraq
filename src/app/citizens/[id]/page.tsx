@@ -70,7 +70,6 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
             console.error('Error fetching user complaints:', complaintsResponse.status);
           }
         }
-        console.log("userData.complaints", userData.complaints);
       } catch (error) {
         console.error('Error fetching user complaints:', error);
       }
@@ -134,7 +133,7 @@ export default function CitizenDetailsPage({ params }: { params: { id: string } 
       });
       
       // fetchWithAuth returns parsed JSON data directly on success
-      console.log('Notification created successfully:', response);
+      console.log('Notification created successfully');
       
       // Reset form and show success message
       alert('تم إرسال الإشعار بنجاح');

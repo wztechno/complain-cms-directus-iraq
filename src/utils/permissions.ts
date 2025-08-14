@@ -115,7 +115,7 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
         return permissionsData;
       }
       
-      console.log(`Fetching policies for user ID: ${userId}`);
+      console.log(`Fetching policies for user ID`);
       
       // Fetch user policies from the API
       const userPoliciesResponse = await fetchWithAuth(`/items/user_policies?filter[user_id][directus_users_id][_eq]=${userId}`);
@@ -128,7 +128,7 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
         return permissionsData;
       }
       
-      console.log(`Found ${userPoliciesResponse.data.length} user policies`, userPoliciesResponse.data);
+      console.log(`Found user policies`);
       
       // Extract policy IDs from the response
       const policyIds: string[] = [];
@@ -159,7 +159,7 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
         return permissionsData;
       }
       
-      console.log(`Extracted policy IDs: ${policyIds.join(', ')}`);
+      console.log(`Extracted policy IDs`);
       
       // Process each policy to fetch permissions and extract district/status IDs
       for (const policyId of policyIds) {
@@ -170,14 +170,14 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
             const policyResponse = await fetchWithAuth(`/policies/${policyId}`);
             if (policyResponse && policyResponse.data) {
               policyData = policyResponse.data;
-              console.log(`Successfully fetched policy data for ${policyId}:`, policyData);
+              console.log(`Successfully fetched policy data for`);
               
               // Process district ID if present
               if (policyData.district_id) {
                 const districtId = Number(policyData.district_id);
                 if (!isNaN(districtId) && !permissionsData.districtIds.includes(districtId)) {
                   permissionsData.districtIds.push(districtId);
-                  console.log(`Added district ID ${districtId} from policy ${policyId}`);
+                  console.log(`Added district ID`);
                 }
               }
               
@@ -191,7 +191,7 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
                   const id = Number(statusId);
                   if (!isNaN(id) && !permissionsData.statusSubcategoryIds.includes(id)) {
                     permissionsData.statusSubcategoryIds.push(id);
-                    console.log(`Added status subcategory ID ${id} from policy ${policyId}`);
+                    console.log(`Added status subcategory ID`);
                   }
                 });
               }
@@ -229,7 +229,7 @@ export async function getUserPermissions(): Promise<UserPermissionsData> {
                   actions: ['read'],
                   permissions: {}
                 };
-                console.log(`Added default read permission for ${collection}`);
+                console.log(`Added default read permission for`);
               }
             });
           }
@@ -371,7 +371,7 @@ function processCollectionPermissions(permissions: any[], permissionsData: UserP
     // Add action if not already present
     if (permission.action && !permissionsData.collections[permission.collection].actions.includes(permission.action)) {
       permissionsData.collections[permission.collection].actions.push(permission.action);
-      console.log(`Added ${permission.action} permission for ${permission.collection}`);
+      console.log(`Added permission for`);
     }
     
     // Process custom conditions (district, status_subcategory)
@@ -456,20 +456,20 @@ export function hasPermission(
 ): boolean {
   // Admin check - admin has access to everything
   if (userPermissions?.isAdmin) {
-    console.log(`Admin user detected, granting permission for ${collection}:${action}`);
+    console.log(`Admin user detected, granting permission for`);
     return true;
   }
   
   if (!userPermissions?.collections) return false;
   
   // Debug log for permission check
-  console.log(`Checking permissions for ${collection}:${action}`);
-  console.log(`Available collections:`, Object.keys(userPermissions.collections));
+  console.log(`Checking permissions for`);
+  console.log(`Available collections`);
   
   // First try direct match
   let collectionPermissions = userPermissions.collections[collection];
   if (collectionPermissions) {
-    console.log(`Found exact match for collection "${collection}"`);
+    console.log(`Found exact match for collection`);
     return collectionPermissions.actions.includes(action);
   }
   
@@ -480,7 +480,7 @@ export function hasPermission(
   );
   
   if (matchingCollectionKey) {
-    console.log(`Found case-insensitive match for collection "${collection}" as "${matchingCollectionKey}"`);
+    console.log(`Found case-insensitive match for collection`);
     return userPermissions.collections[matchingCollectionKey].actions.includes(action);
   }
   
@@ -490,7 +490,7 @@ export function hasPermission(
     const districtVariations = ['District', 'district', 'districts', 'Districts', 'governorate', 'governorates', 'Governorate', 'Governorates'];
     for (const variation of districtVariations) {
       if (userPermissions.collections[variation]) {
-        console.log(`Found District collection as "${variation}"`);
+        console.log(`Found District collection`);
         return userPermissions.collections[variation].actions.includes(action);
       }
     }
@@ -499,12 +499,12 @@ export function hasPermission(
     const possibleMatches = Object.keys(userPermissions.collections).filter(key => 
       key.toLowerCase().includes('district') || key.toLowerCase().includes('govern'));
     if (possibleMatches.length > 0) {
-      console.log(`Possible district matches found: ${possibleMatches.join(', ')}`);
+      console.log(`Possible district matches found`);
     }
   }
   
   // No matching collection found
-  console.log(`No permissions found for collection "${collection}"`);
+  console.log(`No permissions found for collection`);
   return false;
 }
 
@@ -513,7 +513,7 @@ export function hasPermission(
  * This function constructs a query string with filters based on user permissions.
  */
 export function applyPermissionFilters(userPermissions: UserPermissionsData): string {
-  console.log("Applying permission filters with user permissions:", userPermissions);
+  console.log("Applying permission filters with user permissions");
   
   // If user is admin, allow access to all records
   if (userPermissions.isAdmin) {
@@ -537,7 +537,7 @@ export function applyPermissionFilters(userPermissions: UserPermissionsData): st
   
   // Add status subcategory filters if any exist
   if (userPermissions.statusSubcategoryIds && userPermissions.statusSubcategoryIds.length > 0) {
-    console.log(`Adding status subcategory filters for IDs: ${userPermissions.statusSubcategoryIds.join(', ')}`);
+    console.log(`Adding status subcategory filters for IDs`);
     filterParams["filter[status_subcategory][_in]"] = userPermissions.statusSubcategoryIds.join(',');
   }
   
@@ -546,7 +546,7 @@ export function applyPermissionFilters(userPermissions: UserPermissionsData): st
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     .join('&');
   
-  console.log(`Final query string for permission filters: ${queryString ? '?' + queryString : '(empty)'}`);
+  console.log(`Final query string for permission filters`);
   return queryString ? `?${queryString}` : "";
 }
 
@@ -611,7 +611,6 @@ export async function refreshPermissions(): Promise<UserPermissionsData> {
  */
 async function fetchPolicyPermissions(policyId: string): Promise<any[]> {
   try {
-    console.log(`Fetching permissions for policy ${policyId} from permissions endpoint`);
     // Use the direct endpoint with the proper policy field
     const response = await fetchWithAuth(`/permissions?filter[policy][_eq]=${policyId}`);
     
@@ -620,10 +619,9 @@ async function fetchPolicyPermissions(policyId: string): Promise<any[]> {
       return [];
     }
     
-    console.log(`Found ${response.data.length} permissions for policy ${policyId}`);
     return response.data;
   } catch (error) {
-    console.error(`Error fetching permissions for policy ${policyId}:`, error);
+    console.error(`Error fetching permissions for policy`, error);
     return [];
   }
 } 

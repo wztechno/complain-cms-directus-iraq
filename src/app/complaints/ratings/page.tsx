@@ -70,7 +70,6 @@ export default function RatingsPage() {
       //   throw new Error('Failed to fetch ratings');
       // }
       const data = await res;
-      console.log("data", data);
       
       // Filter out ratings where the complaint has been deleted
       const validRatings = data.data.filter((rating: Rating) => rating.complaint && rating.complaint.id);
@@ -127,14 +126,12 @@ export default function RatingsPage() {
       filtered = filtered.filter(rating => 
         rating.complaint?.id.toString().includes(filters.complaintId)
       );
-      console.log(`After complaint ID filter (${filters.complaintId}): ${filtered.length} ratings`);
     }
 
     if (filters.serviceType) {
       filtered = filtered.filter(rating => 
         rating.complaint?.service_type === filters.serviceType
       );
-      console.log(`After service type filter (${filters.serviceType}): ${filtered.length} complaints`);
     }
 
     if (filters.mainCategory) {

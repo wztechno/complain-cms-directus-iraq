@@ -109,9 +109,7 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
         setLoadingComplaints(false);
         return;
       }
-      
-      console.log('Filtering by subcategory ID:', params.id);
-      
+            
       // Get auth token
       const token = localStorage.getItem('auth_token');
       if (!token) {
@@ -122,7 +120,6 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
       
       // Use direct fetch with the simplest URL format
       const directUrl = `https://complaint.top-wp.com/items/Complaint?filter[Complaint_Subcategory][_eq]=${params.id}`;
-      console.log('Direct API request URL:', directUrl);
       
       const response = await fetch(directUrl, {
         method: 'GET',
@@ -139,14 +136,11 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
       
       // Expect data in shape { data: Complaint[] }
       const data = (await response.json()) as { data: Complaint[] };
-      console.log('API response:', data);
       
       if (!data || !data.data || !Array.isArray(data.data)) {
         console.error('Invalid response format:', data);
         throw new Error('Invalid API response format');
       }
-      
-      console.log(`Received ${data.data.length} complaints from API`);
       
       // Process complaints data
       const complaintsData: Complaint[] = data.data;
@@ -206,8 +200,6 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
         return;
       }
       
-      console.log('Filtering status subcategories by complaint subcategory ID:', params.id);
-      
       // Get auth token
       const token = localStorage.getItem('auth_token');
       if (!token) {
@@ -218,7 +210,6 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
       
       // Use direct fetch with the URL format for status subcategories
       const directUrl = `https://complaint.top-wp.com/items/Status_subcategory?filter[complaint_subcategory][_eq]=${params.id}`;
-      console.log('Direct API request URL for status subcategories:', directUrl);
       
       const response = await fetch(directUrl, {
         method: 'GET',
@@ -235,15 +226,12 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
       
       // Expect data in shape { data: StatusSubcategory[] }
       const data = (await response.json()) as { data: StatusSubcategory[] };
-      console.log('API response for status subcategories:', data);
       
       if (!data || !data.data || !Array.isArray(data.data)) {
         console.error('Invalid response format:', data);
         throw new Error('Invalid API response format');
       }
-      
-      console.log(`Received ${data.data.length} status subcategories from API`);
-      
+    
       // Process status subcategories data
       const statusSubcategoryData: StatusSubcategory[] = data.data;
       

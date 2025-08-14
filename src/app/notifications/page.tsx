@@ -90,7 +90,7 @@ export default function NotificationsPage() {
 
   // Add a debugging effect to see the users when they change
   useEffect(() => {
-    console.log('Users data updated:', users.map(u => ({id: u.id, name: u.full_name, type: typeof u.id})));
+    console.log('Users data updated');
   }, [users]);
 
   const checkAdminStatus = () => {
@@ -125,13 +125,11 @@ export default function NotificationsPage() {
       const response = await fetchWithAuth('/items/users?fields=id,full_name,email,district');
       
       if (response && response.data) {
-        console.log(`Successfully fetched ${response.data.length} users`);
         // Ensure user IDs are consistently stored as strings for easier comparison
         const processedUsers = (response.data as User[]).map((user) => ({
           ...user,
           id: user.id.toString() // Ensure IDs are strings
         }));
-        console.log('Processed users with string IDs:', processedUsers.map((u: User) => `${u.id} (${u.full_name})`));
         setUsers(processedUsers);
       } else {
         console.warn('No users data returned from API');
@@ -149,7 +147,6 @@ export default function NotificationsPage() {
       const response = await fetchWithAuth('/items/District');
       
       if (response && response.data) {
-        console.log(`Successfully fetched ${response.data.length} districts`);
         setDistricts(response.data);
       } else {
         console.warn('No districts data returned from API');
@@ -179,7 +176,6 @@ export default function NotificationsPage() {
           return dateB - dateA;
         });
         
-        console.log("Fetched notifications with user data:", sortedNotifications);
         setNotifications(sortedNotifications);
       } else {
         setNotifications([]);
@@ -200,7 +196,6 @@ export default function NotificationsPage() {
       const response = await fetchWithAuth(`/items/users?filter[district][_eq]=${districtId}&fields=id,full_name,email,district`);
       
       if (response && response.data) {
-        console.log(`Found ${response.data.length} users in district ${districtId}`);
         setUsersInSelectedDistrict(response.data);
         return response.data;
       } else {
@@ -320,13 +315,6 @@ export default function NotificationsPage() {
       const ADMIN_ROLE_ID = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
       const isUserAdmin = userInfo?.role === ADMIN_ROLE_ID;
       
-      console.log('Current user info:', {
-        id: userInfo.id,
-        role: userInfo.role,
-        isAdmin: isUserAdmin,
-        firstName: userInfo.first_name,
-        lastName: userInfo.last_name
-      });
       
       if (!isUserAdmin) {
         alert('عذراً، فقط المسؤول يمكنه إنشاء إشعارات.');
@@ -344,7 +332,7 @@ export default function NotificationsPage() {
         if (!isNaN(userId)) {
           userIds = [userId];
         }
-        console.log(`Notification will be sent to user ID: ${userId}`);
+        console.log(`Notification will be sent to user`);
       } 
       // If filtering by district
       else if (notificationForm.filterByDistrict && selectedDistrict) {
@@ -356,7 +344,6 @@ export default function NotificationsPage() {
           userIds = usersInSelectedDistrict
             .map((user: User) => parseInt(user.id, 10))
             .filter((id: number) => !isNaN(id));
-          console.log(`Using ${userIds.length} users from district ${selectedDistrict}`);
         } else {
           // If our cached list is empty, try fetching again just to be sure
           const districtUsers = await fetchUsersByDistrict(selectedDistrict);
@@ -365,14 +352,12 @@ export default function NotificationsPage() {
             userIds = districtUsers
               .map((user: User) => parseInt(user.id, 10))
               .filter((id: number) => !isNaN(id));
-            console.log(`Fetched ${userIds.length} users from district ${selectedDistrict}`);
           } else {
             console.warn(`No users found in district ${selectedDistrict}, notification may not be delivered to anyone`);
             userIds = []; // Empty array means no recipients
           }
         }
         
-        console.log(`Notification will be sent to ${userIds.length} users in district ID: ${selectedDistrict}`);
       } 
       // If sending to all users
       else if (notificationForm.sendToAll) {
@@ -384,7 +369,6 @@ export default function NotificationsPage() {
           .map(user => parseInt(user.id, 10))
           .filter(id => !isNaN(id));
           
-        console.log(`Notification will be sent to all ${userIds.length} users`);
       }
       // Default case - no valid selection
       else {
@@ -422,7 +406,6 @@ export default function NotificationsPage() {
         console.warn('No users specified for notification - it may not be delivered');
       }
 
-      console.log('Sending notification with exact format:', JSON.stringify(notificationData));
       
       try {
         // Use direct fetch with the correct format

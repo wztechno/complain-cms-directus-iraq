@@ -22,6 +22,7 @@ interface User {
   };
 }
 
+
 interface District {
   id: number;
   name: string;
@@ -90,7 +91,7 @@ export default function CitizensPage() {
         fetchWithAuth('/items/District'),
       ]);
 
-      
+
       // if (!userRes.ok || !districtRes?.data) {
       //   throw new Error('Failed to fetch users or districts');
       // }

@@ -401,8 +401,6 @@ export default function SettingsPage() {
             }
           }
 
-          console.log('Creating permission:', JSON.stringify(permissionData));
-
           const permissionResponse = await fetchWithAuth('/permissions', {
             method: 'POST',
             headers: {

@@ -86,7 +86,7 @@ export default function CitizensPage() {
     try {
       setLoading(true);
       const [userRes, districtRes] = await Promise.all([
-        fetchWithAuth('/items/users'),
+        fetchWithAuth('/items/users?limit=-1'),
         fetchWithAuth('/items/District'),
       ]);
 

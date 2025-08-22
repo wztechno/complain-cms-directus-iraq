@@ -63,7 +63,7 @@ export default function ComplaintTimelinePage({ params }: { params: { id: string
       const complaintTimelines: TimelineEntry[] = timelineJson.data;
 
       // 4. Fetch all status subcategories
-      const subCategoriesRes = await fetchWithAuth('/items/Status_subcategory');
+      const subCategoriesRes = await fetchWithAuth('/items/Status_subcategory?limit=-1');
       const subCategoriesJson = await subCategoriesRes;
       const allSubCategories: StatusSubCategory[] = subCategoriesJson.data.filter(
         (sub: StatusSubCategory) => sub.name !== null

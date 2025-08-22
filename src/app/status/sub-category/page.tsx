@@ -247,7 +247,7 @@ export default function StatusSubCategoryPage() {
   
       if (userPermissions.isAdmin) {
         // Admin: Fetch all subcategories
-        resData = await fetchWithAuth(`/items/Status_subcategory?fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
+        resData = await fetchWithAuth(`/items/Status_subcategory?limit=-1&fields=*,district.*,status_category.*,nextstatus.*,complaint_subcategory.*`);
         setIsAdmin(true);
       } else {
         // Non-admin: Filter by district

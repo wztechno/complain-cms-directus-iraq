@@ -49,8 +49,8 @@ export default function TimelinePage() {
       const [timelineRes, complaintsRes, usersRes, statusRes] = await Promise.all([
         fetchWithAuth('/items/ComplaintTimeline'),
         fetchWithAuth('/items/Complaint'),
-        fetchWithAuth('/items/users'),
-        fetchWithAuth('/items/Status_subcategory')
+        fetchWithAuth('/items/users?limit=-1'),
+        fetchWithAuth('/items/Status_subcategory?limit=-1')
       ]);
     
       // Get responsible users map

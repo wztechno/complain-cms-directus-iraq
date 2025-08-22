@@ -122,7 +122,7 @@ export default function NotificationsPage() {
   const fetchUsers = async () => {
     try {
       // Modify to include district information in the response
-      const response = await fetchWithAuth('/items/users?fields=id,full_name,email,district');
+      const response = await fetchWithAuth('/items/users?limit=-1&fields=id,full_name,email,district');
       
       if (response && response.data) {
         // Ensure user IDs are consistently stored as strings for easier comparison
@@ -165,7 +165,7 @@ export default function NotificationsPage() {
       
       // Admin-only page, so fetch all notifications
       // Include the 'users' field to get the users data
-      const endpoint = '/items/notification?fields=*,users.*,users.user.*';
+      const endpoint = '/items/notification?limit=-1&fields=*,users.*,users.user.*';
       const response = await fetchWithAuth(endpoint);
       
       if (response && response.data) {
@@ -193,7 +193,7 @@ export default function NotificationsPage() {
     try {
       setFetchingDistrictUsers(true);
       // Fetch users filtered by district
-      const response = await fetchWithAuth(`/items/users?filter[district][_eq]=${districtId}&fields=id,full_name,email,district`);
+      const response = await fetchWithAuth(`/items/users?limit=-1&filter[district][_eq]=${districtId}&fields=id,full_name,email,district`);
       
       if (response && response.data) {
         setUsersInSelectedDistrict(response.data);

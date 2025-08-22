@@ -157,7 +157,7 @@ export default function SettingsPage() {
       const [policiesData, districtsData, subCategoriesData, usersData, userPoliciesResponse] = await Promise.all([
         fetchWithAuth('/policies'),
         fetchWithAuth('/items/District'),
-        fetchWithAuth('/items/Status_subcategory'),
+        fetchWithAuth('/items/Status_subcategory?limit=-1'),
         fetchWithAuth('/users'),
         fetchWithAuth('/items/user_policies')
       ]);

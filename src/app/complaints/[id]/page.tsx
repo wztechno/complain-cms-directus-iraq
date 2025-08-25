@@ -33,21 +33,21 @@ const getMediaUrl = (fileId: string, fileType: string): string => {
     fileType.includes("word") ||
     fileType.includes("pdf")
   ) {
-    return `${baseUrl}?access_token=${token}`;
+    return `${baseUrl}`;
   }
 
   // Handle audio files
   if (fileType.startsWith("audio/")) {
-    return `${baseUrl}?download=true&access_token=${token}&t=${Date.now()}`;
+    return `${baseUrl}`;
   }
 
   // Handle video files
   if (fileType.startsWith("video/")) {
-    return `${baseUrl}?access_token=${token}`;
+    return `${baseUrl}`;
   }
 
   // Default case for other file types
-  return `${baseUrl}?download=true&access_token=${token}`;
+  return `${baseUrl}`;
 };
 
 interface MediaFileBase {

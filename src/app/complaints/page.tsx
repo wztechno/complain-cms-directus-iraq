@@ -62,12 +62,82 @@ export default function ComplaintsPage() {
   const [titleList, setTitleList] = useState<string[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [filtered, setFiltered] = useState<Complaint[]>([]);
+  // NEW: state for all complaints when filtering
+  const [allComplaints, setAllComplaints] = useState<Complaint[]>([]);
+  const [filteringAll, setFilteringAll] = useState(false);
 
   // NEW: total count from Directus meta (after permissions), to compute total pages
   const [totalCount, setTotalCount] = useState(0);
 
   /* server-side paging */
   const perPage = 25;
+
+  /* ------------------------------------------------
+   * Fetch all complaints for filtering (only when filters are applied)
+   * ------------------------------------------------*/
+  const loadAllComplaintsForFilter = useCallback(async () => {
+    try {
+      const perms = await getUserPermissions();
+      const info = JSON.parse(localStorage.getItem('user_info') || '{}');
+      const ADMIN_ROLE = '0FE8C81C-035D-41AC-B3B9-72A35678C558';
+      const admin = info?.role === ADMIN_ROLE;
+
+      const statusToUser = await buildStatusToUserMap();
+      
+      const districtResp = await fetchWithAuth('/items/District?filter[active][_eq]=true');
+      const districtsData = districtResp?.data ?? [];
+      const districtMapTyped = new Map<number, string>();
+      districtsData.forEach((d: District) => districtMapTyped.set(d.id, d.name));
+
+      const locationResp = await fetchWithAuth('/items/location?limit=-1');
+      const locationData = locationResp?.data ?? [];
+      const locationMap = new Map<number, { latitude: number; longitude: number }>();
+      locationData.forEach((loc: any) => locationMap.set(loc.id, { latitude: loc.latitude, longitude: loc.longitude }));
+
+      let base = '/items/Complaint';
+      const filterParams: string[] = [];
+      
+      // Apply permission-based filtering for non-admin users
+      if (!admin && perms) {
+        if (perms.districtIds && perms.districtIds.length > 0) {
+          const districtFilter = `filter[district][_in]=${encodeURIComponent(perms.districtIds.join(','))}`;
+          filterParams.push(districtFilter);
+        }
+        
+        if (perms.statusSubcategoryIds && perms.statusSubcategoryIds.length > 0) {
+          const statusFilter = `filter[status_subcategory][_in]=${encodeURIComponent(perms.statusSubcategoryIds.join(','))}`;
+          filterParams.push(statusFilter);
+        }
+        
+        if (filterParams.length === 0) {
+          filterParams.push('filter[id][_eq]=0');
+        }
+      } else if (!admin) {
+        filterParams.push('filter[id][_eq]=0');
+      }
+
+      const filterQuery = filterParams.length > 0 ? filterParams.join('&') + '&' : '';
+      const url = `${base}?${filterQuery}limit=-1`;
+
+      const compResp = await fetchWithAuth(url);
+      const compArr: Complaint[] = await enrichComplaints(
+        compResp.data ?? [],
+        districtMapTyped,
+        statusToUser,
+        locationMap
+      );
+
+      setAllComplaints(compArr);
+      
+      // Update filter dropdown data from all complaints
+      setTitleList(unique(compArr.map((c) => c.title || '')));
+      setStatusList(unique(compArr.map((c) => c.status || '')));
+      setCompletionList(unique(compArr.map((c) => String(c.completion_percentage || ''))).sort((a, b) => +a - +b));
+    } catch (e) {
+      console.error('Error loading all complaints for filter:', e);
+      setAllComplaints([]);
+    }
+  }, []);
 
   /* ------------------------------------------------
    * Master fetch routine (server-side pagination)
@@ -193,28 +263,47 @@ export default function ComplaintsPage() {
   }, [currentPage, loadData]);
 
   /* ------------------------------------------------
-   * Filtering logic (client-side on the current page)
+   * Filtering logic (works on all complaints when filters are applied)
    * ------------------------------------------------*/
   useEffect(() => {
-    let out = [...complaints];
-    const f = filters;
-    if (f.id) out = out.filter((c) => String(c.id).includes(f.id));
-    if (f.governorate) out = out.filter((c) => c.districtName === f.governorate);
-    if (f.title) out = out.filter((c) => c.title === f.title);
-    if (f.status) out = out.filter((c) => c.status === f.status);
-    if (f.completion) out = out.filter((c) => String(c.completion_percentage) === f.completion);
-    if (f.serviceType) {
-      out = out.filter((c) =>
-        f.serviceType === 'خدمات فردية' || f.serviceType === 'خدمات عامة'
-          ? c.Service_type === f.serviceType
-          : c.Service_type === f.serviceType
-      );
+    const hasActiveFilters = Object.values(filters).some(value => value !== '');
+    
+    if (hasActiveFilters) {
+      // If we have filters, we need to load all complaints and filter on them
+      if (allComplaints.length === 0) {
+        setFilteringAll(true);
+        loadAllComplaintsForFilter();
+        return;
+      }
+      
+      // Filter on all complaints
+      let out = [...allComplaints];
+      const f = filters;
+      if (f.id) out = out.filter((c) => String(c.id).includes(f.id));
+      if (f.governorate) out = out.filter((c) => c.districtName === f.governorate);
+      if (f.title) out = out.filter((c) => c.title === f.title);
+      if (f.status) out = out.filter((c) => c.status === f.status);
+      if (f.completion) out = out.filter((c) => String(c.completion_percentage) === f.completion);
+      if (f.serviceType) {
+        out = out.filter((c) =>
+          f.serviceType === 'خدمات فردية' || f.serviceType === 'خدمات عامة'
+            ? c.Service_type === f.serviceType
+            : c.Service_type === f.serviceType
+        );
+      }
+      if (f.startDate) out = out.filter((c) => new Date(c.statusDate || c.date || 0) >= new Date(f.startDate));
+      if (f.endDate) out = out.filter((c) => new Date(c.statusDate || c.date || 0) <= new Date(f.endDate));
+      
+      setFiltered(sortByDate(out));
+      setFilteringAll(false);
+      // Reset to page 1 when applying filters
+      setCurrentPage(1);
+    } else {
+      // No filters, show current page complaints
+      setFiltered(sortByDate(complaints));
+      setFilteringAll(false);
     }
-    if (f.startDate) out = out.filter((c) => new Date(c.statusDate || c.date || 0) >= new Date(f.startDate));
-    if (f.endDate) out = out.filter((c) => new Date(c.statusDate || c.date || 0) <= new Date(f.endDate));
-    setFiltered(sortByDate(out));
-    // When filters change, stay on the same server page (we're filtering the fetched page only)
-  }, [filters, complaints]);
+  }, [filters, complaints, allComplaints, loadAllComplaintsForFilter]);
 
   /* ------------------------------------------------
    * Helpers
@@ -275,6 +364,14 @@ export default function ComplaintsPage() {
     const list = scope === 'all' ? filtered : filtered.filter((c) => selectedIds.includes(c.id));
     if (!list.length) return alert('لا توجد شكاوى للتصدير');
 
+    // Show export info
+    const exportInfo = isFiltering 
+      ? `تم تصدير ${list.length} شكوى من النتائج المفلترة`
+      : `تم تصدير ${list.length} شكوى من الصفحة الحالية`;
+    
+    // Show success message
+    alert(exportInfo);
+
     const rows = [
       ['ID', 'العنوان', 'الوصف', 'نوع الخدمة', 'المحافظة', 'نسبة الإكمال', 'التاريخ', 'الموقع'],
       ...list.map((c) => {
@@ -310,12 +407,31 @@ export default function ComplaintsPage() {
   /* ------------------------------------------------
    * Render helpers
    * ------------------------------------------------*/
-  const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
+  // When filtering, we show all filtered results without pagination
+  const isFiltering = Object.values(filters).some(value => value !== '');
+  const totalPages = isFiltering ? 1 : Math.max(1, Math.ceil(totalCount / perPage));
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const startIdx = (currentPage - 1) * perPage + 1;
-  const endIdx = Math.min(currentPage * perPage, totalCount || startIdx - 1);
+  const clearFilters = () => {
+    setFilters({
+      governorate: '',
+      title: '',
+      startDate: '',
+      endDate: '',
+      serviceType: '',
+      status: '',
+      completion: '',
+      id: ''
+    });
+    setAllComplaints([]);
+    setFilteringAll(false);
+    // Reset to page 1 when clearing filters
+    setCurrentPage(1);
+  };
+
+  const startIdx = isFiltering ? 1 : (currentPage - 1) * perPage + 1;
+  const endIdx = isFiltering ? filtered.length : Math.min(currentPage * perPage, totalCount || startIdx - 1);
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
@@ -341,17 +457,23 @@ export default function ComplaintsPage() {
             isAdmin={isAdmin}
             filters={filters}
             setFilters={setFilters}
+            onClear={clearFilters}
+            isFiltering={isFiltering}
           />
         )}
 
         {/* Content */}
         {loading ? (
           <EmptyState text="جاري تحميل البيانات..." />
+        ) : filteringAll ? (
+          <EmptyState text="جاري تطبيق الفلاتر..." />
         ) : !filtered.length ? (
           <EmptyState 
             text="لا توجد شكاوى" 
             sub={
-              isAdmin 
+              isFiltering 
+                ? "لا توجد نتائج تطابق الفلاتر المحددة."
+                : isAdmin 
                 ? "قد يكون هذا بسبب عدم وجود شكاوى في هذه الصفحة."
                 : "قد يكون هذا بسبب عدم وجود شكاوى في هذه الصفحة أو عدم وجود صلاحيات كافية للوصول إلى البيانات."
             }
@@ -361,14 +483,16 @@ export default function ComplaintsPage() {
 
             
             <Grid complaints={filtered} selected={selectedIds} onSelect={toggleSelect} />
-            <Pagination
-              current={currentPage}
-              totalPages={totalPages}
-              onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              onPageChange={(page: number) => setCurrentPage(page)}
-              rangeText={`عرض ${startIdx} - ${endIdx} من ${totalCount} شكوى`}
-            />
+            {!isFiltering && (
+              <Pagination
+                current={currentPage}
+                totalPages={totalPages}
+                onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onPageChange={(page: number) => setCurrentPage(page)}
+                rangeText={`عرض ${startIdx} - ${endIdx} من ${totalCount} شكوى`}
+              />
+            )}
           </>
         )}
       </main>
@@ -440,9 +564,22 @@ interface FiltersProps {
     id: string; governorate: string; title: string; status: string;
     completion: string; serviceType: string; startDate: string; endDate: string;
   }>>;
+  onClear: () => void;
+  isFiltering: boolean;
 }
-const Filters: React.FC<FiltersProps> = ({ districts, titles, statuses, completions, isAdmin, filters, setFilters }) => (
+const Filters: React.FC<FiltersProps> = ({ districts, titles, statuses, completions, isAdmin, filters, setFilters, onClear, isFiltering }) => (
   <div className="bg-white rounded-lg p-6 shadow mb-6">
+    <div className="flex justify-between items-center mb-4">
+      <h3 className="text-lg font-semibold text-gray-700">فلاتر البحث</h3>
+      {isFiltering && (
+        <button
+          onClick={onClear}
+          className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm"
+        >
+          مسح الفلاتر
+        </button>
+      )}
+    </div>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <FLT label="رقم الشكوى">
         <input

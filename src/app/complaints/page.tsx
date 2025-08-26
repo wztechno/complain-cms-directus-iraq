@@ -6,7 +6,7 @@ import { GrFilter } from 'react-icons/gr';
 import { FaFileDownload, FaPlus, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import ComplaintCard from '@/components/ComplaintCard';
 import { fetchWithAuth } from '@/utils/api';
-import { getUserPermissions } from '@/utils/permissions';
+import { getUserPermissions, complaintMatchesPermissions } from '@/utils/permissions';
 import { buildStatusToUserMap, StatusToUserMap } from '@/utils/responsible-users';
 
 const BASE_URL = 'https://complaint.top-wp.com';
@@ -98,18 +98,45 @@ export default function ComplaintsPage() {
       const locationMap = new Map<number, { latitude: number; longitude: number }>();
       locationData.forEach((loc: any) => locationMap.set(loc.id, { latitude: loc.latitude, longitude: loc.longitude }));
 
-      /* 4️⃣ complaints core list – server-side pagination */
-      // permissions (OR) filter same as before
+      /* 4️⃣ complaints core list – server-side pagination with enhanced permission filtering */
       let base = '/items/Complaint';
-      const orParts: string[] = [];
+      const filterParams: string[] = [];
+      
+      // Apply permission-based filtering for non-admin users
       if (!admin && perms) {
-        if (perms.districtIds?.length) orParts.push(`district={${perms.districtIds.join(',')}}`);
-        if (perms.statusSubcategoryIds?.length) orParts.push(`status_subcategory={${perms.statusSubcategoryIds.join(',')}}`);
-      }
-      const orFilter = (!admin && orParts.length) ? `filter[_or]=[${orParts.join(',')}]&` : '';
+        console.log('Applying permission filters for non-admin user');
+        
+        // District filter
+        if (perms.districtIds && perms.districtIds.length > 0) {
+          const districtFilter = `filter[district][_in]=${encodeURIComponent(perms.districtIds.join(','))}`;
+          filterParams.push(districtFilter);
 
-      // Ask Directus for filter_count meta so we can compute total pages
-      const url = `${base}?${orFilter}limit=${perPage}&page=${page}&meta=filter_count`;
+        }
+        
+        // Status subcategory filter
+        if (perms.statusSubcategoryIds && perms.statusSubcategoryIds.length > 0) {
+          const statusFilter = `filter[status_subcategory][_in]=${encodeURIComponent(perms.statusSubcategoryIds.join(','))}`;
+          filterParams.push(statusFilter);
+        }
+        
+        // If no specific filters were added but user has permissions, add a basic filter to ensure security
+        if (filterParams.length === 0) {
+          console.warn('User has permissions but no specific filters - this might indicate a permission configuration issue');
+          // Add a restrictive filter to prevent access to all data
+          filterParams.push('filter[id][_eq]=0'); // This will return no results, ensuring security
+        }
+      } else if (admin) {
+        console.log('Admin user - no permission filters applied');
+      } else {
+        console.warn('No permissions found for user - this might indicate a permission configuration issue');
+        // For users without permissions, restrict access
+        filterParams.push('filter[id][_eq]=0'); // This will return no results, ensuring security
+      }
+
+      // Build the final URL with filters
+      const filterQuery = filterParams.length > 0 ? filterParams.join('&') + '&' : '';
+      const url = `${base}?${filterQuery}limit=${perPage}&page=${page}&meta=filter_count`;
+      
 
       const compResp = await fetchWithAuth(url);
       const metaFilterCount = Number(compResp?.meta?.filter_count ?? 0);
@@ -132,10 +159,29 @@ export default function ComplaintsPage() {
       setFiltered(sortByDate(compArr));
       setSelectedIds([]); // clear selections when page changes
     } catch (e) {
-      console.error(e);
+      console.error('Error loading complaints data:', e);
+      
+      // Provide more specific error messages
+      let errorMessage = 'حدث خطأ أثناء تحميل البيانات';
+      if (e instanceof Error) {
+        if (e.message.includes('403') || e.message.includes('Forbidden')) {
+          errorMessage = 'ليس لديك صلاحية للوصول إلى هذه البيانات';
+        } else if (e.message.includes('401') || e.message.includes('Unauthorized')) {
+          errorMessage = 'انتهت صلاحية الجلسة، يرجى إعادة تسجيل الدخول';
+        } else if (e.message.includes('500') || e.message.includes('Internal Server Error')) {
+          errorMessage = 'خطأ في الخادم، يرجى المحاولة مرة أخرى لاحقاً';
+        }
+      }
+      
       setComplaints([]);
       setFiltered([]);
       setTotalCount(0);
+      
+      // Show error message to user
+      if (typeof window !== 'undefined') {
+        // You could use a toast notification library here instead
+        console.error('User-facing error:', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -257,6 +303,10 @@ export default function ComplaintsPage() {
     a.click();
   }, [filtered, selectedIds]);
 
+
+
+
+
   /* ------------------------------------------------
    * Render helpers
    * ------------------------------------------------*/
@@ -279,6 +329,8 @@ export default function ComplaintsPage() {
           onExport={exportCsv}
         />
 
+
+
         {/* Filters */}
         {showFilters && (
           <Filters
@@ -296,9 +348,18 @@ export default function ComplaintsPage() {
         {loading ? (
           <EmptyState text="جاري تحميل البيانات..." />
         ) : !filtered.length ? (
-          <EmptyState text="لا توجد شكاوى" sub="قد يكون هذا بسبب عدم وجود شكاوى في هذه الصفحة أو عدم وجود صلاحيات." />
+          <EmptyState 
+            text="لا توجد شكاوى" 
+            sub={
+              isAdmin 
+                ? "قد يكون هذا بسبب عدم وجود شكاوى في هذه الصفحة."
+                : "قد يكون هذا بسبب عدم وجود شكاوى في هذه الصفحة أو عدم وجود صلاحيات كافية للوصول إلى البيانات."
+            }
+          />
         ) : (
           <>
+
+            
             <Grid complaints={filtered} selected={selectedIds} onSelect={toggleSelect} />
             <Pagination
               current={currentPage}
@@ -475,7 +536,7 @@ const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect }) => (
           title={c.title || 'بدون عنوان'}
           status={c.status || 'غير محدد'}
           mainCategory={c.mainCategory || 'غير محدد'}
-          type={c.service_type || 'غير محدد'}
+          type={c.Service_type || 'غير محدد'}
           location={c.districtName || 'غير محدد'}
           progress={Number(c.completion_percentage) || 0}
           issue={c.description || 'لا يوجد وصف'}
@@ -521,6 +582,8 @@ const Select = ({ list, suffix = '', ...rest }: any) => (
     ))}
   </select>
 );
+
+
 
 // Move export functionality to a client-side component
 const ExportButton: React.FC<{ onExport: () => void }> = ({ onExport }) => {

@@ -366,6 +366,7 @@ export default function ComplaintsPage() {
               totalPages={totalPages}
               onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
               onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onPageChange={(page: number) => setCurrentPage(page)}
               rangeText={`عرض ${startIdx} - ${endIdx} من ${totalCount} شكوى`}
             />
           </>
@@ -549,22 +550,91 @@ const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect }) => (
   </div>
 );
 
-const Pagination = ({ current, totalPages, onPrev, onNext, rangeText }: any) => (
-  <div className="mt-8 flex justify-between items-center">
-    <div className="text-sm text-gray-600">{rangeText}</div>
-    <div className="flex gap-2">
-      <button onClick={onPrev} disabled={current === 1} className={`p-2 rounded-lg ${current === 1 ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}>
-        <FaChevronRight />
-      </button>
-      <div className="flex items-center justify-center px-4 py-2 bg-white rounded-lg shadow-sm">
-        {current} / {totalPages}
+const Pagination = ({ current, totalPages, onPrev, onNext, onPageChange, rangeText }: any) => {
+  // Generate page numbers with smart pagination
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisiblePages = 7; // Show max 7 page numbers
+    
+    if (totalPages <= maxVisiblePages) {
+      // If total pages is small, show all pages
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Smart pagination for large numbers of pages
+      if (current <= 4) {
+        // Near the beginning: show 1, 2, 3, 4, 5, ..., last
+        for (let i = 1; i <= 5; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (current >= totalPages - 3) {
+        // Near the end: show 1, ..., last-4, last-3, last-2, last-1, last
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 4; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        // In the middle: show 1, ..., current-1, current, current+1, ..., last
+        pages.push(1);
+        pages.push('...');
+        for (let i = current - 1; i <= current + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  const handlePageClick = (page: number | string) => {
+    if (typeof page === 'number' && page !== current && onPageChange) {
+      onPageChange(page);
+    }
+  };
+
+  return (
+    <div className="mt-8 flex justify-between items-center">
+      <div className="text-sm text-gray-600">{rangeText}</div>
+      <div className="flex gap-2">
+        <button onClick={onPrev} disabled={current === 1} className={`p-2 rounded-lg ${current === 1 ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}>
+          <FaChevronRight />
+        </button>
+        
+        {/* Page Numbers */}
+        <div className="flex gap-1">
+          {getPageNumbers().map((page, index) => (
+            <button
+              key={index}
+              onClick={() => handlePageClick(page)}
+              disabled={page === '...'}
+              className={`
+                px-3 py-2 rounded-lg text-sm font-medium transition-colors
+                ${page === current 
+                  ? 'bg-[#4664AD] text-white' 
+                  : page === '...'
+                  ? 'text-gray-400 cursor-default'
+                  : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                }
+              `}
+            >
+              {page}
+            </button>
+          ))}
+        </div>
+        
+        <button onClick={onNext} disabled={current === totalPages} className={`p-2 rounded-lg ${current === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}>
+          <FaChevronLeft />
+        </button>
       </div>
-      <button onClick={onNext} disabled={current === totalPages} className={`p-2 rounded-lg ${current === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}>
-        <FaChevronLeft />
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const EmptyState = ({ text, sub }: any) => (
   <div className="flex flex-col justify-center items-center h-64 text-center">

@@ -119,7 +119,7 @@ export default function SubCategoryDetailsPage({ params }: { params: { id: strin
       }
       
       // Use direct fetch with the simplest URL format
-      const directUrl = `https://complaint.top-wp.com/items/Complaint?filter[Complaint_Subcategory][_eq]=${params.id}`;
+      const directUrl = `https://complaint.top-wp.com/items/Complaint?filter[complaint_subcategory][_eq]=${params.id}`;
       
       const response = await fetch(directUrl, {
         method: 'GET',

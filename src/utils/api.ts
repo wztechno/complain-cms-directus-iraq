@@ -366,6 +366,11 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
           throw new Error(`API call failed: ${response.status} ${response.statusText}`);
         }
         
+        // Handle DELETE requests that return no content
+        if (options.method === 'DELETE' || response.status === 204) {
+          return { success: true, status: response.status };
+        }
+        
         return await response.json();
       }
     }
@@ -696,7 +701,13 @@ if (endpoint.startsWith('/policies')) {
       throw new Error(`API call failed: ${response.status} ${response.statusText}`);
     }
 
-    // Try to parse JSON response
+    // Handle different response types based on HTTP method and status
+    if (options.method === 'DELETE' || response.status === 204) {
+      // DELETE requests and 204 No Content responses don't have a body to parse
+      return { success: true, status: response.status };
+    }
+    
+    // Try to parse JSON response for other requests
     try {
       const jsonResponse = await response.json();
       

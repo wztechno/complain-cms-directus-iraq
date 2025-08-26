@@ -77,7 +77,7 @@ export default function MainCategoryDetailsPage({ params }: { params: { id: stri
       }
       
       // Use direct fetch with the simplest URL format
-      const directUrl = `/items/Complaint?filter[title][_eq]=${encodeURIComponent(category.name)}`;
+      const directUrl = `https://complaint.top-wp.com/items/Complaint?filter[title][_eq]=${encodeURIComponent(category.name)}`;
       
       const response = await fetch(directUrl, {
         method: 'GET',

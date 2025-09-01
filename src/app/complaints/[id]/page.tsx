@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { fetchWithAuth } from "@/utils/api";
 import {
   getUserPermissions,
@@ -203,6 +203,7 @@ const Field: React.FC<{ label: string; value: React.ReactNode }> = ({
 
 export default function ComplaintPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -636,7 +637,11 @@ export default function ComplaintPage({ params }: { params: { id: string } }) {
           <h2 className="text-xl font-bold text-red-500 text-center mb-4">{error}</h2>
           <div className="flex justify-center">
             <button
-              onClick={() => router.push("/complaints")}
+              onClick={() => {
+                const page = searchParams.get('page');
+                const pageParam = page ? `?page=${page}` : '';
+                router.push(`/complaints${pageParam}`);
+              }}
               className="bg-[#4664AD] text-white px-4 py-2 rounded-lg"
             >
               العودة إلى الشكاوى

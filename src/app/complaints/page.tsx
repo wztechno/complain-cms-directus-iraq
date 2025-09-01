@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { GrFilter } from 'react-icons/gr';
 import { FaFileDownload, FaPlus, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -38,16 +38,16 @@ interface Complaint {
   };
 }
 
-export default function ComplaintsPage({ searchParams }: { searchParams: { page?: string } }) {
+export default function ComplaintsPage() {
   const router = useRouter();
-  const searchParamsHook = useSearchParams();
+  const searchParams = useSearchParams();
   
   /* UI + filter state */
   const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(() => {
-    const pageFromUrl = searchParams.page ? parseInt(searchParams.page, 10) : 1;
-    return isNaN(pageFromUrl) || pageFromUrl < 1 ? 1 : pageFromUrl;
+    const pageFromUrl = searchParams.get('page');
+    return pageFromUrl ? parseInt(pageFromUrl, 10) : 1;
   });
   const [filters, setFilters] = useState({
     governorate: '',
@@ -266,7 +266,7 @@ export default function ComplaintsPage({ searchParams }: { searchParams: { page?
 
   // Update URL when currentPage changes
   useEffect(() => {
-    const params = new URLSearchParams(searchParamsHook.toString());
+    const params = new URLSearchParams(searchParams.toString());
     if (currentPage > 1) {
       params.set('page', currentPage.toString());
     } else {
@@ -274,7 +274,9 @@ export default function ComplaintsPage({ searchParams }: { searchParams: { page?
     }
     const newUrl = params.toString() ? `?${params.toString()}` : '';
     router.replace(`/complaints${newUrl}`, { scroll: false });
-  }, [currentPage, router, searchParamsHook]);
+  }, [currentPage, router, searchParams]);
+
+  // initial + whenever currentPage changes
 
   // initial + whenever currentPage changes
   useEffect(() => {

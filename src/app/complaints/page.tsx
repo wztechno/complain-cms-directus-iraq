@@ -711,23 +711,22 @@ const Pagination = ({ current, totalPages, onPrev, onNext, onPageChange, rangeTe
   // Generate page numbers with smart pagination
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
-    const maxVisiblePages = 7; // Show max 7 page numbers
     
-    if (totalPages <= maxVisiblePages) {
+    if (totalPages <= 5) {
       // If total pages is small, show all pages
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
     } else {
-      // Smart pagination for large numbers of pages
-      if (current <= 4) {
+      // Show only 5 pages with ellipsis
+      if (current <= 3) {
         // Near the beginning: show 1, 2, 3, 4, 5, ..., last
         for (let i = 1; i <= 5; i++) {
           pages.push(i);
         }
         pages.push('...');
         pages.push(totalPages);
-      } else if (current >= totalPages - 3) {
+      } else if (current >= totalPages - 2) {
         // Near the end: show 1, ..., last-4, last-3, last-2, last-1, last
         pages.push(1);
         pages.push('...');
@@ -759,6 +758,20 @@ const Pagination = ({ current, totalPages, onPrev, onNext, onPageChange, rangeTe
     <div className="mt-8 flex justify-between items-center">
       <div className="text-sm text-gray-600">{rangeText}</div>
       <div className="flex gap-2">
+        {/* First page button */}
+        <button 
+          onClick={() => onPageChange(1)} 
+          disabled={current === 1} 
+          className={`p-2 rounded-lg ${current === 1 ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}
+          title="الصفحة الأولى"
+        >
+          <div className="flex">
+            <FaChevronRight />
+            <FaChevronRight />
+          </div>
+        </button>
+        
+        {/* Previous page button */}
         <button onClick={onPrev} disabled={current === 1} className={`p-2 rounded-lg ${current === 1 ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}>
           <FaChevronRight />
         </button>
@@ -785,8 +798,22 @@ const Pagination = ({ current, totalPages, onPrev, onNext, onPageChange, rangeTe
           ))}
         </div>
         
+        {/* Next page button */}
         <button onClick={onNext} disabled={current === totalPages} className={`p-2 rounded-lg ${current === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}>
           <FaChevronLeft />
+        </button>
+        
+        {/* Last page button */}
+        <button 
+          onClick={() => onPageChange(totalPages)} 
+          disabled={current === totalPages} 
+          className={`p-2 rounded-lg ${current === totalPages ? 'bg-gray-200 text-gray-400' : 'bg-[#4664AD] text-white'}`}
+          title="الصفحة الأخيرة"
+        >
+          <div className="flex">
+            <FaChevronLeft />
+            <FaChevronLeft />
+          </div>
         </button>
       </div>
     </div>

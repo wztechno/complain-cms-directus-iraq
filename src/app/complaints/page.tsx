@@ -4,6 +4,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { GrFilter } from 'react-icons/gr';
 import { FaFileDownload, FaPlus, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ComplaintCard from '@/components/ComplaintCard';
 import { fetchWithAuth } from '@/utils/api';
 import { getUserPermissions, complaintMatchesPermissions } from '@/utils/permissions';
@@ -37,11 +38,17 @@ interface Complaint {
   };
 }
 
-export default function ComplaintsPage() {
+export default function ComplaintsPage({ searchParams }: { searchParams: { page?: string } }) {
+  const router = useRouter();
+  const searchParamsHook = useSearchParams();
+  
   /* UI + filter state */
   const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    const pageFromUrl = searchParams.page ? parseInt(searchParams.page, 10) : 1;
+    return isNaN(pageFromUrl) || pageFromUrl < 1 ? 1 : pageFromUrl;
+  });
   const [filters, setFilters] = useState({
     governorate: '',
     title: '',
@@ -117,7 +124,7 @@ export default function ComplaintsPage() {
       }
 
       const filterQuery = filterParams.length > 0 ? filterParams.join('&') + '&' : '';
-      const url = `${base}?${filterQuery}limit=-1`;
+      const url = `${base}?${filterQuery}limit=-1&sort[]=-id`;
 
       const compResp = await fetchWithAuth(url);
       const compArr: Complaint[] = await enrichComplaints(
@@ -205,7 +212,7 @@ export default function ComplaintsPage() {
 
       // Build the final URL with filters
       const filterQuery = filterParams.length > 0 ? filterParams.join('&') + '&' : '';
-      const url = `${base}?${filterQuery}limit=${perPage}&page=${page}&meta=filter_count`;
+      const url = `${base}?${filterQuery}limit=${perPage}&page=${page}&meta=filter_count&sort[]=-id`;
       
 
       const compResp = await fetchWithAuth(url);
@@ -256,6 +263,18 @@ export default function ComplaintsPage() {
       setLoading(false);
     }
   }, [perPage]);
+
+  // Update URL when currentPage changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParamsHook.toString());
+    if (currentPage > 1) {
+      params.set('page', currentPage.toString());
+    } else {
+      params.delete('page');
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : '';
+    router.replace(`/complaints${newUrl}`, { scroll: false });
+  }, [currentPage, router, searchParamsHook]);
 
   // initial + whenever currentPage changes
   useEffect(() => {
@@ -482,7 +501,7 @@ export default function ComplaintsPage() {
           <>
 
             
-            <Grid complaints={filtered} selected={selectedIds} onSelect={toggleSelect} />
+            <Grid complaints={filtered} selected={selectedIds} onSelect={toggleSelect} currentPage={currentPage} />
             {!isFiltering && (
               <Pagination
                 current={currentPage}
@@ -664,8 +683,8 @@ const FLT = ({ label, children }: any) => (
   </div>
 );
 
-interface GridProps { complaints: Complaint[]; selected: string[]; onSelect: (id: string) => void; }
-const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect }) => (
+interface GridProps { complaints: Complaint[]; selected: string[]; onSelect: (id: string) => void; currentPage: number; }
+const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect, currentPage }) => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {complaints.map((c) => (
       <div key={c.id}>
@@ -681,6 +700,7 @@ const Grid: React.FC<GridProps> = ({ complaints, selected, onSelect }) => (
           isSelected={selected.includes(c.id)}
           onSelect={onSelect}
           responsibleUser={c.responsibleUser}
+          currentPage={currentPage}
         />
       </div>
     ))}

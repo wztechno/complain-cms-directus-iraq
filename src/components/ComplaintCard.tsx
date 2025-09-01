@@ -16,6 +16,7 @@ interface ComplaintCardProps {
   isSelected?: boolean;
   onSelect?: (id: string) => void;
   responsibleUser?: string;
+  currentPage?: number;
 }
 
 const ComplaintCard = ({ 
@@ -29,13 +30,15 @@ const ComplaintCard = ({
   progress, 
   isSelected = false,
   responsibleUser,
-  onSelect 
+  onSelect,
+  currentPage
 }: ComplaintCardProps) => {
   const router = useRouter();
   const [showMenu, setShowMenu] = useState(false);
 
   const handleCardClick = () => {
-    router.push(`/complaints/${id}`);
+    const url = currentPage ? `/complaints/${id}?page=${currentPage}` : `/complaints/${id}`;
+    router.push(url);
   };
 
   const handleMenuClick = (e: React.MouseEvent) => {

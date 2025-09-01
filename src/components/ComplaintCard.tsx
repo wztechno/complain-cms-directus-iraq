@@ -110,7 +110,7 @@ const ComplaintCard = ({
       </div>
 
       <div className="flex justify-between items-center mt-8 mb-4 text-right">
-        <div className="text-gray-600">{issue}</div>
+        <div className="text-gray-600 break-words w-[50%] line-clamp-1">{issue}</div>
         <div className="text-gray-600">{location}</div>
       </div>
     </div>

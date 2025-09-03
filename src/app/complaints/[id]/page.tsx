@@ -17,38 +17,12 @@ import PermissionGuard from "@/components/PermissionGuard";
  * Helpers & Type Aliases *
  *************************/
 
-const getMediaUrl = (fileId: string, fileType: string): string => {
-  const token = localStorage.getItem("auth_token");
-  if (!token) return "";
+const getMediaUrl = (fileId: string): string => {
   const baseUrl = `https://complaint.top-wp.com/assets/${fileId}`;
-
-  // First check for image files
-  if (fileType.startsWith("image/")) {
-    return `${baseUrl}?access_token=${token}`;
-  }
-
-  // Then check for PDF and document files
-  if (
-    fileType.startsWith("application/pdf") ||
-    fileType.includes("word") ||
-    fileType.includes("pdf")
-  ) {
-    return `${baseUrl}`;
-  }
-
-  // Handle audio files
-  if (fileType.startsWith("audio/")) {
-    return `${baseUrl}`;
-  }
-
-  // Handle video files
-  if (fileType.startsWith("video/")) {
-    return `${baseUrl}`;
-  }
-
-  // Default case for other file types
-  return `${baseUrl}`;
+  return baseUrl; // Return clean URL without token in query params
 };
+
+
 
 interface MediaFileBase {
   id: string;
@@ -133,7 +107,7 @@ const mapFileToMedia = async (
     filename_download: f.filename_download,
     title: f.title || f.filename_download,
     filesize: parseInt(f.filesize || "0", 10),
-    src: getMediaUrl(f.id, f.type),
+    src: getMediaUrl(f.id),
   } as const;
 
   // If explicit type is provided, use it

@@ -1,5 +1,159 @@
 import React, { useState } from 'react';
 import { FaImage, FaVideo, FaVolumeUp, FaFileAlt, FaEye, FaDownload, FaPlay, FaStop, FaSpinner, FaExternalLinkAlt, FaFilePdf, FaFileWord, FaTimes } from 'react-icons/fa';
+import { fetchAssetWithAuth } from '@/utils/assets';
+
+// Authenticated Image Component
+interface AuthenticatedImageProps {
+  src: string;
+  alt: string;
+  className?: string;
+  onClick?: () => void;
+}
+
+const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({ src, alt, className, onClick }) => {
+  const [imageSrc, setImageSrc] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  React.useEffect(() => {
+    const fetchImage = async () => {
+      try {
+        // Extract file ID from URL
+        const fileId = src.split('/assets/')[1];
+        if (!fileId) {
+          setError(true);
+          setIsLoading(false);
+          return;
+        }
+
+        const blob = await fetchAssetWithAuth(fileId);
+        const blobUrl = URL.createObjectURL(blob);
+        setImageSrc(blobUrl);
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Error fetching image:', err);
+        setError(true);
+        setIsLoading(false);
+      }
+    };
+
+    fetchImage();
+  }, [src]);
+
+  if (isLoading) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-gray-200`}>
+        <FaSpinner className="animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-gray-200 text-gray-500`}>
+        <FaImage className="text-2xl" />
+      </div>
+    );
+  }
+
+  return (
+    <img 
+      src={imageSrc} 
+      alt={alt} 
+      className={className}
+      onClick={onClick}
+    />
+  );
+};
+
+// Helper function for authenticated downloads
+const downloadWithAuth = async (url: string, filename: string) => {
+  try {
+    // Extract file ID from URL
+    const fileId = url.split('/assets/')[1];
+    if (!fileId) {
+      throw new Error('Invalid asset URL');
+    }
+
+    const blob = await fetchAssetWithAuth(fileId);
+    const blobUrl = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error('Download error:', error);
+    // Fallback to direct link
+    window.open(url, '_blank');
+  }
+};
+
+// Authenticated Video Component
+interface AuthenticatedVideoProps {
+  src: string;
+  className?: string;
+  onClick?: () => void;
+}
+
+const AuthenticatedVideo: React.FC<AuthenticatedVideoProps> = ({ src, className, onClick }) => {
+  const [videoSrc, setVideoSrc] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  React.useEffect(() => {
+    const fetchVideo = async () => {
+      try {
+        // Extract file ID from URL
+        const fileId = src.split('/assets/')[1];
+        if (!fileId) {
+          setError(true);
+          setIsLoading(false);
+          return;
+        }
+
+        const blob = await fetchAssetWithAuth(fileId);
+        const blobUrl = URL.createObjectURL(blob);
+        setVideoSrc(blobUrl);
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Error fetching video:', err);
+        setError(true);
+        setIsLoading(false);
+      }
+    };
+
+    fetchVideo();
+  }, [src]);
+
+  if (isLoading) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-gray-200`}>
+        <FaSpinner className="animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-gray-200 text-gray-500`}>
+        <FaVideo className="text-2xl" />
+      </div>
+    );
+  }
+
+  return (
+    <video 
+      className={className}
+      onClick={onClick}
+    >
+      <source src={videoSrc} type="video/mp4" />
+    </video>
+  );
+};
 
 interface MediaFile {
   id: string;
@@ -140,7 +294,7 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
             {processedImages.map((image) => (
               <div key={image.id} className="bg-gray-50 rounded-lg overflow-hidden">
                 <div className="relative group">
-                  <img 
+                  <AuthenticatedImage 
                     src={image.src} 
                     alt={image.title || image.filename_download} 
                     className="w-full h-48 object-cover cursor-pointer"
@@ -159,13 +313,12 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
                     >
                       <FaEye className="text-[#4664AD]" />
                     </button>
-                    <a 
-                      href={image.src} 
-                      download={image.filename_download}
+                    <button 
+                      onClick={() => downloadWithAuth(image.src, image.filename_download)}
                       className="p-2 bg-white rounded-full mx-2 hover:bg-blue-100"
                     >
                       <FaDownload className="text-[#4664AD]" />
-                    </a>
+                    </button>
                   </div>
                 </div>
                 <div className="p-2 text-xs text-gray-500 truncate">
@@ -188,16 +341,14 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
             {processedVideos.map((video) => (
               <div key={video.id} className="bg-gray-50 rounded-lg overflow-hidden">
                 <div className="relative group">
-                  <video 
+                  <AuthenticatedVideo 
+                    src={video.src}
                     className="w-full h-auto cursor-pointer"
-                    poster={video.src + '?preview=true'}
                     onClick={() => {
                       setSelectedMedia(video);
                       setIsPreviewOpen(true);
                     }}
-                  >
-                    <source src={video.src} type="video/mp4" />
-                  </video>
+                  />
                   <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => {
@@ -208,13 +359,12 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
                     >
                       <FaPlay className="text-[#4664AD]" />
                     </button>
-                    <a 
-                      href={video.src} 
-                      download={video.filename_download}
+                    <button 
+                      onClick={() => downloadWithAuth(video.src, video.filename_download)}
                       className="p-2 bg-white rounded-full mx-2 hover:bg-blue-100"
                     >
                       <FaDownload className="text-[#4664AD]" />
-                    </a>
+                    </button>
                   </div>
                 </div>
                 <div className="p-3 flex justify-between items-center">
@@ -309,14 +459,13 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
                         </button>
                       )}
                       
-                      <a 
-                        href={file.src} 
-                        download={file.filename_download}
+                      <button 
+                        onClick={() => downloadWithAuth(file.src, file.filename_download)}
                         className="p-1.5 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
                         title="تنزيل الملف"
                       >
                         <FaDownload size={12} />
-                      </a>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -337,7 +486,7 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
       >
         {selectedMedia?.type === 'image' && (
           <div className="flex items-center justify-center">
-            <img
+            <AuthenticatedImage
               src={selectedMedia.src}
               alt={selectedMedia.title || selectedMedia.filename_download}
               className="max-w-full max-h-[70vh] object-contain"
@@ -346,14 +495,10 @@ const ComplaintMedia: React.FC<ComplaintMediaProps> = ({
         )}
         {selectedMedia?.type === 'video' && (
           <div className="flex items-center justify-center">
-            <video
-              controls
-              autoPlay
+            <AuthenticatedVideo
+              src={selectedMedia.src}
               className="max-w-full max-h-[70vh]"
-            >
-              <source src={selectedMedia.src} type="video/mp4" />
-              متصفحك لا يدعم عرض الفيديو
-            </video>
+            />
           </div>
         )}
         {selectedMedia?.type === 'file' && (
@@ -382,7 +527,7 @@ const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({ audioSrc, audioTi
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [base64Audio, setBase64Audio] = useState<string | null>(null);
+  const [base64Audio] = useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement>(null);
   const mounted = React.useRef(true);
   
@@ -390,66 +535,42 @@ const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({ audioSrc, audioTi
   React.useEffect(() => {
     return () => {
       mounted.current = false;
-      if (audioRef.current) {
-        audioRef.current.pause();
+      const audioElement = audioRef.current;
+      if (audioElement) {
+        audioElement.pause();
       }
     };
   }, []);
 
   // Update the fetchAudioAsBase64 function to handle 400 errors better:
-  const fetchAudioAsBase64 = async () => {
+  const fetchAudioAsBase64 = React.useCallback(async () => {
     try {
       if (!mounted.current) return;
       
       setIsLoading(true);
       setError(null);
 
-      // Extract token from URL if it exists
-      const token = audioSrc.match(/access_token=([^&]+)/)?.[1] || localStorage.getItem('auth_token');
-      
-      // Check if we need to refresh the token
-      const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
-      const isTokenExpired = tokenData && tokenData.exp * 1000 < Date.now();
-      
-      // Try refreshing token if expired (simplified approach)
-      let urlToFetch = audioSrc;
-      if (isTokenExpired) {
-        const freshToken = localStorage.getItem('auth_token'); // Get the latest token
-        urlToFetch = audioSrc.replace(/access_token=[^&]+/, `access_token=${freshToken}`);
-      }
-
-      console.log('Fetching audio from:', urlToFetch);
+      console.log('Fetching audio from:', audioSrc);
       
       // Attempt to fetch directly without conversion to base64
       if (!mounted.current) return;
       
-      // First try direct approach
+      // First try direct approach with headers
       if (audioRef.current) {
-        audioRef.current.src = urlToFetch;
+        // Extract file ID from URL
+        const fileId = audioSrc.split('/assets/')[1];
+        if (!fileId) {
+          throw new Error('Invalid asset URL');
+        }
+
+        const blob = await fetchAssetWithAuth(fileId);
+        const blobUrl = URL.createObjectURL(blob);
+        audioRef.current.src = blobUrl;
         audioRef.current.load();
         setIsLoading(false);
         return;
       }
       
-      // If direct approach fails, try fetch with proxy approach
-      const response = await fetch(urlToFetch, {
-        method: 'GET',
-        headers: {
-          // Avoid setting content-type and accept headers that could trigger preflight
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch audio: ${response.status}`);
-      }
-      
-      const blob = await response.blob();
-      const dataUrl = URL.createObjectURL(blob);
-      
-      if (mounted.current) {
-        setBase64Audio(dataUrl);
-        setIsLoading(false);
-      }
     } catch (error) {
       console.error('Error fetching audio as base64:', error);
       if (mounted.current) {
@@ -457,7 +578,7 @@ const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({ audioSrc, audioTi
         setIsLoading(false);
       }
     }
-  };
+  }, [audioSrc]);
 
   // Update the handlePlay method to be more resilient
   const handlePlay = () => {
@@ -718,7 +839,7 @@ const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({ audioSrc, audioTi
   
   React.useEffect(() => {
     fetchAudioAsBase64();
-  }, [audioSrc]);
+  }, [audioSrc, fetchAudioAsBase64]);
 
   const handleStop = () => {
     if (!audioRef.current) return;
@@ -808,7 +929,7 @@ const M4AAudioPlayer: React.FC<M4AAudioPlayerProps> = ({ audioSrc, audioTitle })
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [base64Audio, setBase64Audio] = useState<string | null>(null);
+  const [base64Audio] = useState<string | null>(null);
   const audioRef = React.useRef<HTMLAudioElement>(null);
   const mounted = React.useRef(true);
   
@@ -816,66 +937,42 @@ const M4AAudioPlayer: React.FC<M4AAudioPlayerProps> = ({ audioSrc, audioTitle })
   React.useEffect(() => {
     return () => {
       mounted.current = false;
-      if (audioRef.current) {
-        audioRef.current.pause();
+      const audioElement = audioRef.current;
+      if (audioElement) {
+        audioElement.pause();
       }
     };
   }, []);
 
   // Update the fetchAudioAsBase64 function to handle 400 errors better:
-  const fetchAudioAsBase64 = async () => {
+  const fetchAudioAsBase64 = React.useCallback(async () => {
     try {
       if (!mounted.current) return;
       
       setIsLoading(true);
       setError(null);
 
-      // Extract token from URL if it exists
-      const token = audioSrc.match(/access_token=([^&]+)/)?.[1] || localStorage.getItem('auth_token');
-      
-      // Check if we need to refresh the token
-      const tokenData = token ? JSON.parse(atob(token.split('.')[1])) : null;
-      const isTokenExpired = tokenData && tokenData.exp * 1000 < Date.now();
-      
-      // Try refreshing token if expired (simplified approach)
-      let urlToFetch = audioSrc;
-      if (isTokenExpired) {
-        const freshToken = localStorage.getItem('auth_token'); // Get the latest token
-        urlToFetch = audioSrc.replace(/access_token=[^&]+/, `access_token=${freshToken}`);
-      }
-
-      console.log('Fetching audio from:', urlToFetch);
+      console.log('Fetching audio from:', audioSrc);
       
       // Attempt to fetch directly without conversion to base64
       if (!mounted.current) return;
       
-      // First try direct approach
+      // First try direct approach with headers
       if (audioRef.current) {
-        audioRef.current.src = urlToFetch;
+        // Extract file ID from URL
+        const fileId = audioSrc.split('/assets/')[1];
+        if (!fileId) {
+          throw new Error('Invalid asset URL');
+        }
+
+        const blob = await fetchAssetWithAuth(fileId);
+        const blobUrl = URL.createObjectURL(blob);
+        audioRef.current.src = blobUrl;
         audioRef.current.load();
         setIsLoading(false);
         return;
       }
       
-      // If direct approach fails, try fetch with proxy approach
-      const response = await fetch(urlToFetch, {
-        method: 'GET',
-        headers: {
-          // Avoid setting content-type and accept headers that could trigger preflight
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch audio: ${response.status}`);
-      }
-      
-      const blob = await response.blob();
-      const dataUrl = URL.createObjectURL(blob);
-      
-      if (mounted.current) {
-        setBase64Audio(dataUrl);
-        setIsLoading(false);
-      }
     } catch (error) {
       console.error('Error fetching audio as base64:', error);
       if (mounted.current) {
@@ -883,7 +980,7 @@ const M4AAudioPlayer: React.FC<M4AAudioPlayerProps> = ({ audioSrc, audioTitle })
         setIsLoading(false);
       }
     }
-  };
+  }, [audioSrc]);
 
   // Update the handlePlay method to be more resilient
   const handlePlay = () => {
@@ -1144,7 +1241,7 @@ const M4AAudioPlayer: React.FC<M4AAudioPlayerProps> = ({ audioSrc, audioTitle })
   
   React.useEffect(() => {
     fetchAudioAsBase64();
-  }, [audioSrc]);
+  }, [audioSrc, fetchAudioAsBase64]);
 
   const handleStop = () => {
     if (!audioRef.current) return;
@@ -1284,13 +1381,12 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ file }) => {
         <div className="p-4 bg-red-50 text-red-600 rounded text-center">
           {error}
           <div className="mt-2">
-            <a 
-              href={file.src} 
-              download={file.filename_download}
+            <button 
+              onClick={() => downloadWithAuth(file.src, file.filename_download)}
               className="text-blue-600 underline"
             >
               يمكنك تنزيل الملف بدلاً من ذلك
-            </a>
+            </button>
           </div>
         </div>
       )}
@@ -1385,13 +1481,12 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ file }) => {
       )}
       
       <div className="mt-4 flex justify-end">
-        <a 
-          href={file.src} 
-          download={file.filename_download}
+        <button 
+          onClick={() => downloadWithAuth(file.src, file.filename_download)}
           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center"
         >
           <FaDownload className="mr-2" /> تنزيل الملف
-        </a>
+        </button>
       </div>
     </div>
   );
